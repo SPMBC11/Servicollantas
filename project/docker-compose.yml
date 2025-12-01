@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Base de datos PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: servicollantas-db
+    environment:
+      POSTGRES_DB: servicollantas
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./setup-database.sql:/docker-entrypoint-initdb.d/setup-database.sql
+    networks:
+      - servicollantas-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./src/server
+      dockerfile: Dockerfile
+    container_name: servicollantas-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: servicollantas
+      DB_USER: postgres
+      DB_PASSWORD: password
+      PORT: 4000
+      JWT_SECRET: dev-secret-servi-collantas-2025
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+    networks:
+      - servicollantas-network
+    volumes:
+      - ./src/server:/app
+      - /app/node_modules
+
+  # Frontend React
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: servicollantas-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - servicollantas-network
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+
+networks:
+  servicollantas-network:
+    driver: bridge
