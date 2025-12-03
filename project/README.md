@@ -55,8 +55,7 @@ CREATE DATABASE servicollantas;
 
 #### Backend
 ```bash
-cd src/server
-npm install
+cd backend
 ```
 
 #### Frontend

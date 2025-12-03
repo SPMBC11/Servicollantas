@@ -20,7 +20,7 @@ services:
   # Backend API
   backend:
     build:
-      context: ./src/server
+      context: ./backend
       dockerfile: Dockerfile
     container_name: servicollantas-backend
     environment:
