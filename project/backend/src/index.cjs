@@ -182,6 +182,57 @@ app.post("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res)
   }
 });
 
+// Update client
+app.put("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, email } = req.body;
+    
+    if (!name || !phone || !email) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+    
+    const client = await pool.connect();
+    const result = await client.query(
+      'UPDATE clients SET name = $1, phone = $2, email = $3 WHERE id = $4 RETURNING *',
+      [name, phone, email, id]
+    );
+    client.release();
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error updating client:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Delete client
+app.delete("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const client = await pool.connect();
+    const result = await client.query(
+      'DELETE FROM clients WHERE id = $1 RETURNING id',
+      [id]
+    );
+    client.release();
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+    
+    res.json({ message: "Client deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting client:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // --- vehicles endpoints ---
 app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   try {
@@ -263,6 +314,57 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
     } else {
       res.status(500).json({ message: "Internal server error" });
     }
+  }
+});
+
+// Update vehicle
+app.put("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { make, model, year, license_plate } = req.body;
+    
+    if (!make || !model || !year || !license_plate) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+    
+    const dbClient = await pool.connect();
+    const result = await dbClient.query(
+      'UPDATE vehicles SET make = $1, model = $2, year = $3, license_plate = $4 WHERE id = $5 RETURNING *',
+      [make, model, year, license_plate, id]
+    );
+    dbClient.release();
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error updating vehicle:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Delete vehicle
+app.delete("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const dbClient = await pool.connect();
+    const result = await dbClient.query(
+      'DELETE FROM vehicles WHERE id = $1 RETURNING id',
+      [id]
+    );
+    dbClient.release();
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    
+    res.json({ message: "Vehicle deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting vehicle:", err);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -355,7 +457,20 @@ app.get("/api/invoices", authMiddleware(["admin"]), async (req, res) => {
     const client = await pool.connect();
     const result = await client.query('SELECT * FROM invoices ORDER BY date DESC');
     client.release();
-    res.json(result.rows);
+    
+    // Transform to match frontend expectations
+    const invoices = result.rows.map(inv => ({
+      id: inv.id,
+      clientName: inv.client_name,
+      clientEmail: inv.client_email,
+      vehicle: inv.vehicle_info,
+      services: inv.services || [],
+      total: parseFloat(inv.total) || 0,
+      date: inv.date,
+      status: inv.status === 'pending' ? 'pendiente' : 'pagada'
+    }));
+    
+    res.json(invoices);
   } catch (err) {
     console.error("Error obteniendo facturas:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -373,7 +488,19 @@ app.get("/api/invoices/:id", authMiddleware(["admin"]), async (req, res) => {
       return res.status(404).json({ message: "Invoice not found" });
     }
     
-    res.json(result.rows[0]);
+    const inv = result.rows[0];
+    const invoice = {
+      id: inv.id,
+      clientName: inv.client_name,
+      clientEmail: inv.client_email,
+      vehicle: inv.vehicle_info,
+      services: inv.services || [],
+      total: parseFloat(inv.total) || 0,
+      date: inv.date,
+      status: inv.status === 'pending' ? 'pendiente' : 'pagada'
+    };
+    
+    res.json(invoice);
   } catch (err) {
     console.error("Error obteniendo factura:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -395,6 +522,55 @@ app.post("/api/invoices", authMiddleware(["admin"]), async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Error creando factura:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// --- endpoint to auto-generate invoice from a completed appointment ---
+app.post("/api/invoices/from-appointment/:appointmentId", authMiddleware(["admin"]), async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const client = await pool.connect();
+    
+    // Get appointment details
+    const appointmentResult = await client.query(
+      `SELECT a.*, c.name as client_name, c.email as client_email, 
+              v.license_plate, v.make, v.model, s.name as service_name, s.price
+       FROM appointments a
+       JOIN clients c ON a.client_id = c.id
+       JOIN vehicles v ON a.vehicle_id = v.id
+       JOIN services s ON a.service_id = s.id
+       WHERE a.id = $1 AND a.status = 'completed'`,
+      [appointmentId]
+    );
+    
+    if (appointmentResult.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ message: "Completed appointment not found" });
+    }
+    
+    const appointment = appointmentResult.rows[0];
+    const invoiceId = `INV-${Date.now()}`;
+    const vehicleInfo = `${appointment.make} ${appointment.model} (${appointment.license_plate})`;
+    const services = [{ id: appointment.service_id, name: appointment.service_name, price: appointment.price }];
+    const total = parseFloat(appointment.price) || 0;
+    
+    const invoiceResult = await client.query(
+      `INSERT INTO invoices (id, client_name, client_email, vehicle_info, services, total, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [invoiceId, appointment.client_name, appointment.client_email, vehicleInfo, JSON.stringify(services), total, 'paid']
+    );
+    
+    // Link invoice to appointment
+    await client.query(
+      'UPDATE appointments SET invoice_id = $1 WHERE id = $2',
+      [invoiceId, appointmentId]
+    );
+    
+    client.release();
+    res.status(201).json(invoiceResult.rows[0]);
+  } catch (err) {
+    console.error("Error generating invoice from appointment:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -479,6 +655,92 @@ app.get("/api/invoices/:id/pdf", authMiddleware(["admin"]), async (req, res) => 
     doc.end();
   } catch (err) {
     console.error("Error generando PDF:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// --- reports endpoint ---
+app.get("/api/reports", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: "startDate and endDate are required" });
+    }
+    
+    const client = await pool.connect();
+    
+    // Total appointments in range
+    const appointmentsResult = await client.query(
+      `SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+       FROM appointments 
+       WHERE DATE(date) >= $1 AND DATE(date) <= $2`,
+      [startDate, endDate]
+    );
+    
+    const stats = appointmentsResult.rows[0];
+    
+    // Service breakdown
+    const servicesResult = await client.query(
+      `SELECT 
+        s.name as service_name,
+        COUNT(a.id) as count,
+        COALESCE(SUM(s.price), 0) as revenue
+       FROM appointments a
+       JOIN services s ON a.service_id = s.id
+       WHERE DATE(a.date) >= $1 AND DATE(a.date) <= $2 AND a.status = 'completed'
+       GROUP BY s.id, s.name
+       ORDER BY count DESC`,
+      [startDate, endDate]
+    );
+    
+    // Appointments by day
+    const appointmentsByDayResult = await client.query(
+      `SELECT 
+        DATE(date) as date,
+        COUNT(*) as count
+       FROM appointments
+       WHERE DATE(date) >= $1 AND DATE(date) <= $2
+       GROUP BY DATE(date)
+       ORDER BY DATE(date)`,
+      [startDate, endDate]
+    );
+    
+    // Calculate total revenue
+    const revenueResult = await client.query(
+      `SELECT COALESCE(SUM(s.price), 0) as total_revenue
+       FROM appointments a
+       JOIN services s ON a.service_id = s.id
+       WHERE DATE(a.date) >= $1 AND DATE(a.date) <= $2 AND a.status = 'completed'`,
+      [startDate, endDate]
+    );
+    
+    client.release();
+    
+    const reportData = {
+      totalAppointments: parseInt(stats.total) || 0,
+      completedAppointments: parseInt(stats.completed) || 0,
+      pendingAppointments: parseInt(stats.pending) || 0,
+      cancelledAppointments: parseInt(stats.cancelled) || 0,
+      totalRevenue: parseFloat(revenueResult.rows[0].total_revenue) || 0,
+      serviceBreakdown: servicesResult.rows.map(row => ({
+        service_name: row.service_name,
+        count: parseInt(row.count),
+        revenue: parseFloat(row.revenue)
+      })),
+      appointmentsByDay: appointmentsByDayResult.rows.map(row => ({
+        date: row.date.toISOString().split('T')[0],
+        count: parseInt(row.count)
+      }))
+    };
+    
+    res.json(reportData);
+  } catch (err) {
+    console.error("Error fetching reports:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });

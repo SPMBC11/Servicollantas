@@ -1,20 +1,26 @@
 // src/components/admin/ManageClients.tsx
 import React, { useState, useEffect } from "react";
-import { Users, UserPlus, Trash2, Edit } from "lucide-react";
+import { Users, UserPlus, Trash2, Edit, X, Check } from "lucide-react";
 import Card from "../ui/Card";
 
 interface Client {
-  id: number;
+  id: string;
   name: string;
   email: string;
   phone: string;
-  vehicle?: string;
+  created_at?: string;
+}
+
+interface EditingClient extends Client {
+  isEditing?: boolean;
 }
 
 const ManageClients: React.FC = () => {
   // Estado de clientes reales
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({ name: "", phone: "", email: "" });
   const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
   useEffect(() => {
@@ -50,19 +56,77 @@ const ManageClients: React.FC = () => {
 
   // Calcular estadísticas
   const totalClients = clients.length;
-  // Si el backend no tiene el campo vehicle, puedes omitir activeClients o ajustarlo
-  const activeClients = clients.filter(c => !!c.vehicle).length;
+
+  const handleEdit = (client: Client) => {
+    setEditingId(client.id);
+    setEditFormData({ name: client.name, phone: client.phone, email: client.email });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("No hay token de autenticación.");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${backendUrl}/api/clients/${editingId}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(editFormData)
+      });
+      
+      if (!res.ok) {
+        alert("Error al actualizar cliente");
+        return;
+      }
+      
+      const updatedClient = await res.json();
+      setClients(clients.map(c => c.id === editingId ? updatedClient : c));
+      setEditingId(null);
+      alert("Cliente actualizado exitosamente");
+    } catch (err) {
+      console.error(err);
+      alert("Error de red al actualizar cliente");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditFormData({ name: "", phone: "", email: "" });
+  };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este cliente?')) {
+      return;
+    }
+    
     const token = localStorage.getItem("token");
     if (!token) {
       alert("No hay token de autenticación. Inicia sesión como admin.");
       return;
     }
+    
     try {
-      // Si tienes endpoint DELETE /api/clients/:id, úsalo aquí
-      // await fetch(`${backendUrl}/api/clients/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${backendUrl}/api/clients/${id}`, {
+        method: "DELETE",
+        headers: { 
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      
+      if (!res.ok) {
+        alert("Error al eliminar cliente");
+        return;
+      }
+      
       setClients(clients.filter(c => c.id !== id));
+      alert("Cliente eliminado exitosamente");
     } catch {
       alert("Error de red al eliminar el cliente");
     }
@@ -77,7 +141,7 @@ const ManageClients: React.FC = () => {
       ) : (
         <>
           {/* Cards de estadísticas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card 
               title="Clientes Totales" 
               value={totalClients} 
@@ -85,14 +149,8 @@ const ManageClients: React.FC = () => {
               bg="bg-blue-100" 
             />
             <Card 
-              title="Clientes Activos" 
-              value={activeClients} 
-              icon={<Users className="w-6 h-6 text-green-600" />} 
-              bg="bg-green-100" 
-            />
-            <Card 
               title="Nuevos este mes" 
-              value={2} // lo puedes conectar a tu lógica real
+              value={0} // Se puede mejorar agregando filtro de fecha
               icon={<UserPlus className="w-6 h-6 text-purple-600" />} 
               bg="bg-purple-100" 
             />
@@ -115,33 +173,81 @@ const ManageClients: React.FC = () => {
                     <th className="px-6 py-3">Nombre</th>
                     <th className="px-6 py-3">Email</th>
                     <th className="px-6 py-3">Teléfono</th>
-                    <th className="px-6 py-3">Vehículo</th>
                     <th className="px-6 py-3 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clients.map(client => (
-                    <tr key={client.id} className="border-b hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-dark">{client.name}</td>
-                      <td className="px-6 py-4">{client.email}</td>
-                      <td className="px-6 py-4">{client.phone}</td>
-                      <td className="px-6 py-4">{client.vehicle || "—"}</td>
-                      <td className="px-6 py-4 text-center">
-                        <button className="text-blue-600 hover:text-blue-800 mr-3">
-                          <Edit size={18} />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(client.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
+                    editingId === client.id ? (
+                      <tr key={client.id} className="border-b bg-yellow-50">
+                        <td className="px-6 py-4">
+                          <input
+                            type="text"
+                            value={editFormData.name}
+                            onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                            className="w-full border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <input
+                            type="email"
+                            value={editFormData.email}
+                            onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                            className="w-full border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <input
+                            type="text"
+                            value={editFormData.phone}
+                            onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                            className="w-full border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={handleSaveEdit}
+                            className="text-green-600 hover:text-green-800 mr-3"
+                            title="Guardar"
+                          >
+                            <Check size={18} />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="text-red-600 hover:text-red-800"
+                            title="Cancelar"
+                          >
+                            <X size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={client.id} className="border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-dark">{client.name}</td>
+                        <td className="px-6 py-4">{client.email}</td>
+                        <td className="px-6 py-4">{client.phone}</td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleEdit(client)}
+                            className="text-blue-600 hover:text-blue-800 mr-3"
+                            title="Editar"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(client.id)}
+                            className="text-red-600 hover:text-red-800"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
                   ))}
                   {clients.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center text-gray-500 py-6">
+                      <td colSpan={4} className="text-center text-gray-500 py-6">
                         No hay clientes registrados
                       </td>
                     </tr>

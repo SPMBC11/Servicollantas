@@ -91,6 +91,7 @@ async function initializeTables() {
         time TIME NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed')),
         notes TEXT,
+        invoice_id VARCHAR(50) REFERENCES invoices(id) ON DELETE SET NULL,
         service_provider_id VARCHAR(50) REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -112,6 +113,17 @@ async function initializeTables() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add invoice_id column to appointments if it doesn't exist
+    try {
+      await client.query(`
+        ALTER TABLE appointments 
+        ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(50) REFERENCES invoices(id) ON DELETE SET NULL
+      `);
+    } catch (err) {
+      // Column might already exist, ignore error
+      console.log('ℹ️ invoice_id column might already exist');
+    }
 
     console.log('✅ Tablas de base de datos inicializadas correctamente');
   } catch (err) {

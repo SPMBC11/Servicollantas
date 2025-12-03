@@ -39,6 +39,11 @@ const ManageInvoices: React.FC = () => {
       setLoading(false);
     };
     fetchInvoices();
+    
+    // Actualizar facturas cada 15 segundos
+    const interval = setInterval(fetchInvoices, 15000);
+    
+    return () => clearInterval(interval);
   }, [backendUrl]);
 
   // ...existing code...

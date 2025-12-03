@@ -31,6 +31,7 @@ import {
   Clock,
   Star,
   UserCheck,
+  DollarSign,
 } from "lucide-react";
 import { clientService, vehicleService, appointmentService } from "../../services/api";
 
@@ -38,7 +39,8 @@ import ManageClients from "./ManageClients";
 import ManageVehicles from "./ManageVehicles";
 import ManageServices from "./ManageServices";
 import ManageInvoices from "./ManageInvoices";
-import Reports from "./Reports";
+import ManageReports from "./ManageReports";
+import ManageAppointments from "./ManageAppointments";
 import SettingsPage from "./SettingsPage";
 import NotificationToast from "./NotificationToast";
 import Card from "../ui/Card";
@@ -56,6 +58,7 @@ export default function AdminDashboard() {
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Booking[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
@@ -65,25 +68,36 @@ export default function AdminDashboard() {
       setLoading(true);
       try {
         console.log("Fetching data from backend...");
-        const [clientsRes, vehiclesRes, servicesRes] = await Promise.all([
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        
+        const [clientsRes, vehiclesRes, servicesRes, invoicesRes] = await Promise.all([
           fetch(`${backendUrl}/api/clients`),
           fetch(`${backendUrl}/api/vehicles`),
           fetch(`${backendUrl}/api/bookings`),
+          fetch(`${backendUrl}/api/invoices`, { headers }),
         ]);
-        console.log("Responses:", { clientsRes, vehiclesRes, servicesRes });
+        console.log("Responses:", { clientsRes, vehiclesRes, servicesRes, invoicesRes });
         const clientsData = clientsRes.ok ? await clientsRes.json() : [];
         const vehiclesData = vehiclesRes.ok ? await vehiclesRes.json() : [];
         const servicesData = servicesRes.ok ? await servicesRes.json() : [];
+        const invoicesData = invoicesRes.ok ? await invoicesRes.json() : [];
         setClients(clientsData);
         setVehicles(vehiclesData);
         setServices(servicesData);
-        console.log("Data set:", { clientsData, vehiclesData, servicesData });
+        setInvoices(invoicesData);
+        console.log("Data set:", { clientsData, vehiclesData, servicesData, invoicesData });
       } catch (error) {
         console.error("Error fetching data:", error);
       }
       setLoading(false);
     };
     fetchAll();
+    
+    // Actualizar datos cada 30 segundos
+    const interval = setInterval(fetchAll, 30000);
+    
+    return () => clearInterval(interval);
   }, [backendUrl]);
 
   const totalClients = clients.length;
@@ -92,6 +106,8 @@ export default function AdminDashboard() {
     const today = new Date().toISOString().slice(0, 10);
     return s.date === today;
   }).length;
+  const totalInvoices = invoices.length;
+  const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + (parseFloat(inv.total) || 0), 0);
   const avgRating = (
     clients.length > 0 ? (clients.reduce((sum, c) => sum + (c.rating || 0), 0) / clients.length) : 0
   ).toFixed(1);
@@ -102,6 +118,7 @@ export default function AdminDashboard() {
     { id: "clients", label: "Clientes", icon: Users },
     { id: "vehicles", label: "Vehículos", icon: Car },
     { id: "services", label: "Servicios", icon: Wrench },
+    { id: "appointments", label: "Citas", icon: Clock },
     { id: "invoices", label: "Facturas", icon: FileText },
     { id: "reports", label: "Reportes", icon: BarChart },
     { id: "settings", label: "Configuración", icon: Settings },
@@ -234,6 +251,8 @@ export default function AdminDashboard() {
                     <Card title="Clientes" value={totalClients} icon={<Users className="text-blue-600" />} bg="bg-blue-100" />
                     <Card title="Vehículos" value={totalVehicles} icon={<Car className="text-green-600" />} bg="bg-green-100" />
                     <Card title="Citas Hoy" value={todayAppointments} icon={<Clock className="text-orange-600" />} bg="bg-orange-100" />
+                    <Card title="Facturas" value={totalInvoices} icon={<FileText className="text-purple-600" />} bg="bg-purple-100" />
+                    <Card title="Ingresos Totales" value={`$${totalRevenue.toFixed(2)}`} icon={<DollarSign className="text-green-600" />} bg="bg-green-100" />
                     <Card title="Calificación Promedio" value={avgRating} icon={<Star className="text-yellow-600" />} bg="bg-yellow-100" />
                   </div>
 
@@ -290,8 +309,9 @@ export default function AdminDashboard() {
           {view === "clients" && <ManageClients />}
           {view === "vehicles" && <ManageVehicles />}
           {view === "services" && <ManageServices />}
+          {view === "appointments" && <ManageAppointments />}
           {view === "invoices" && <ManageInvoices />}
-          {view === "reports" && <Reports />}
+          {view === "reports" && <ManageReports />}
           {view === "settings" && <SettingsPage />}
         </div>
       </main>

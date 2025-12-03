@@ -4,10 +4,14 @@ import { Car, Plus, Pencil, Trash2 } from "lucide-react";
 import Card from "../ui/Card";
 
 interface Vehicle {
-  id: number;
-  plate: string;
+  id: string;
+  license_plate: string;
   model: string;
-  brand: string;
+  make: string;
+  year: number;
+  client_id: string;
+  client_name?: string;
+  client_email?: string;
 }
 
 const ManageVehicles: React.FC = () => {
@@ -40,26 +44,39 @@ const ManageVehicles: React.FC = () => {
     fetchVehicles();
   }, [backendUrl]);
 
+  const handleDelete = async (id: string | number) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este vehículo?')) {
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${backendUrl}/api/vehicles/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!res.ok) {
+        alert('Error al eliminar vehículo');
+        return;
+      }
+      
+      setVehicles(vehicles.filter(v => v.id !== id));
+      alert('Vehículo eliminado exitosamente');
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Error de red al eliminar vehículo');
+    }
+  };
+
   const handleAdd = () => {
-    const newVehicle: Vehicle = {
-      id: vehicles.length + 1,
-      plate: `NEW-${vehicles.length + 1}`,
-      model: "Nuevo Modelo",
-      brand: "Marca",
-    };
-    setVehicles([...vehicles, newVehicle]);
+    alert('Agregar vehículo - Función por implementar');
   };
 
-  const handleEdit = (id: number) => {
-    setVehicles(
-      vehicles.map((v) =>
-        v.id === id ? { ...v, model: v.model + " (editado)" } : v
-      )
-    );
-  };
-
-  const handleDelete = (id: number) => {
-    setVehicles(vehicles.filter((v) => v.id !== id));
+  const handleEdit = () => {
+    alert('Editar vehículo - Función por implementar');
   };
 
   return (
@@ -99,24 +116,28 @@ const ManageVehicles: React.FC = () => {
                   <th className="p-3">Placa</th>
                   <th className="p-3">Modelo</th>
                   <th className="p-3">Marca</th>
+                  <th className="p-3">Año</th>
+                  <th className="p-3">Cliente</th>
                   <th className="p-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {vehicles.map((vehicle) => (
                   <tr key={vehicle.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3">{vehicle.plate}</td>
+                    <td className="p-3 font-mono text-sm">{vehicle.license_plate}</td>
                     <td className="p-3">{vehicle.model}</td>
-                    <td className="p-3">{vehicle.brand}</td>
+                    <td className="p-3">{vehicle.make}</td>
+                    <td className="p-3">{vehicle.year}</td>
+                    <td className="p-3">{vehicle.client_name || 'N/A'}</td>
                     <td className="p-3 flex justify-end gap-2">
                       <button
-                        onClick={() => handleEdit(vehicle.id)}
+                        onClick={() => handleEdit(vehicle.id as unknown as number)}
                         className="p-2 bg-blue-100 rounded-lg hover:bg-blue-200"
                       >
                         <Pencil className="w-4 h-4 text-blue-600" />
                       </button>
                       <button
-                        onClick={() => handleDelete(vehicle.id)}
+                        onClick={() => handleDelete(vehicle.id as unknown as number)}
                         className="p-2 bg-red-100 rounded-lg hover:bg-red-200"
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
