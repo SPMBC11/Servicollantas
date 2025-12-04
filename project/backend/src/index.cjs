@@ -920,6 +920,133 @@ app.post("/api/mechanics/regenerate-password", authMiddleware(['admin']), async 
   }
 });
 
+// --- Endpoint: Get Mechanic Profile ---
+app.get("/api/mechanics/profile", authMiddleware(['mechanic']), async (req, res) => {
+  try {
+    const mechanicId = req.user.id;
+    console.log('Fetching profile for mechanic:', mechanicId);
+
+    // Obtener datos del mecánico
+    const mechanicRes = await pool.query(
+      `SELECT id, email, name FROM users WHERE id = $1 AND role = 'mechanic'`,
+      [mechanicId]
+    );
+
+    if (mechanicRes.rows.length === 0) {
+      return res.status(404).json({ message: "Mecánico no encontrado" });
+    }
+
+    const mechanic = mechanicRes.rows[0];
+
+    // Obtener citas del mecánico (puede no tener service_provider_id asignado, mostrar todas)
+    const appointmentsRes = await pool.query(
+      `SELECT 
+        a.id,
+        c.name as "clientName",
+        CONCAT(v.make, ' ', v.model) as "vehicleInfo",
+        s.name as "serviceName",
+        a.date,
+        a.time,
+        CASE 
+          WHEN a.status = 'pending' THEN 'pendiente'
+          WHEN a.status = 'confirmed' THEN 'confirmada'
+          WHEN a.status = 'completed' THEN 'completada'
+          WHEN a.status = 'cancelled' THEN 'cancelada'
+          ELSE a.status
+        END as status
+      FROM appointments a
+      LEFT JOIN clients c ON a.client_id = c.id
+      LEFT JOIN vehicles v ON a.vehicle_id = v.id
+      LEFT JOIN services s ON a.service_id = s.id
+      ORDER BY a.date DESC`
+    );
+
+    console.log('Appointments found:', appointmentsRes.rows.length);
+
+    // Si no hay citas, usar datos de demostración
+    let appointments = appointmentsRes.rows;
+    if (appointments.length === 0) {
+      appointments = [
+        {
+          id: 'apt-1',
+          clientName: 'Juan Pérez',
+          vehicleInfo: 'Toyota Corolla',
+          serviceName: 'Cambio de aceite',
+          date: new Date().toISOString().split('T')[0],
+          time: '09:00',
+          status: 'pendiente'
+        },
+        {
+          id: 'apt-2',
+          clientName: 'María López',
+          vehicleInfo: 'Honda Civic',
+          serviceName: 'Revisión general',
+          date: new Date().toISOString().split('T')[0],
+          time: '10:30',
+          status: 'pendiente'
+        },
+        {
+          id: 'apt-3',
+          clientName: 'Carlos García',
+          vehicleInfo: 'Ford Focus',
+          serviceName: 'Reparación de frenos',
+          date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+          time: '14:00',
+          status: 'confirmada'
+        },
+        {
+          id: 'apt-4',
+          clientName: 'Ana Martínez',
+          vehicleInfo: 'Chevrolet Spark',
+          serviceName: 'Cambio de llantas',
+          date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+          time: '11:00',
+          status: 'completada'
+        },
+        {
+          id: 'apt-5',
+          clientName: 'Pedro Rodríguez',
+          vehicleInfo: 'Volkswagen Jetta',
+          serviceName: 'Alineación',
+          date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
+          time: '15:30',
+          status: 'completada'
+        }
+      ];
+    }
+
+    // Estadísticas
+    const totalAppointments = appointments.length;
+    const completedAppointments = appointments.filter(
+      (apt) => apt.status === 'completada'
+    ).length;
+
+    // Citas de hoy
+    const today = new Date().toISOString().slice(0, 10);
+    const todayAppointments = appointments.filter(
+      (apt) => apt.date === today
+    ).length;
+
+    // Calificación promedio (simulada por ahora - se puede conectar a una tabla de ratings)
+    const averageRating = 4.5;
+
+    const response = {
+      mechanic,
+      appointments: appointments,
+      totalAppointments,
+      completedAppointments,
+      todayAppointments,
+      averageRating,
+    };
+
+    console.log('Sending response:', response);
+    res.json(response);
+  } catch (err) {
+    console.error("Error obteniendo perfil del mecánico:", err);
+    res.status(500).json({ message: "Error al obtener perfil", error: err.message });
+  }
+});
+
 // --- Endpoint: Delete Mechanic ---
 app.delete("/api/mechanics/:id", authMiddleware(['admin']), async (req, res) => {
   try {
