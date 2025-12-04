@@ -109,11 +109,19 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       // Get or create client ID
       let clientId: string;
       const currentUser = localStorage.getItem('user');
+      
+      // Only use localStorage user if they're logged in as a CLIENT
       if (currentUser) {
-        // Usuario autenticado
-        clientId = JSON.parse(currentUser).id;
+        const user = JSON.parse(currentUser);
+        if (user.role === 'client') {
+          // Usuario autenticado como cliente
+          clientId = user.id;
+        } else {
+          // Usuario es admin o mechanic - tratar como cliente anónimo
+          clientId = `client-${booking.customerEmail}-${Date.now()}`;
+        }
       } else {
-        // Cliente anónimo - usar email como ID temporal o generar uno
+        // Cliente anónimo - generar ID basado en email y timestamp
         clientId = `client-${booking.customerEmail}-${Date.now()}`;
       }
 
@@ -150,7 +158,32 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
         status: 'pending',
         notes: '',
       };
-      await addAppointment(newAppointment);
+      
+      // Call appointmentService directly with client data
+      const token = localStorage.getItem('token');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+      const res = await fetch(`${backendUrl}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          vehicle_id: vehicleId,
+          service_id: selectedServiceInfo.id,
+          date: booking.date,
+          time: booking.time,
+          notes: '',
+          client_name: booking.customerName,
+          client_email: booking.customerEmail,
+          client_phone: booking.customerPhone
+        })
+      });
+      
+      if (!res.ok) {
+        throw new Error('Error al crear la cita');
+      }
 
       alert('¡Cita reservada exitosamente!');
     } catch (err) {

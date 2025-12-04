@@ -371,7 +371,7 @@ app.delete("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (re
 // --- appointments/bookings endpoints ---
 app.post("/api/bookings", authMiddleware(), async (req, res) => {
   try {
-    const { client_id, vehicle_id, service_id, date, time, notes } = req.body;
+    const { client_id, vehicle_id, service_id, date, time, notes, client_name, client_email, client_phone } = req.body;
     const appointmentId = uuidv4();
     
     // Validate required fields
@@ -382,9 +382,27 @@ app.post("/api/bookings", authMiddleware(), async (req, res) => {
     const dbClient = await pool.connect();
     
     try {
+      // Ensure client exists in clients table
+      const clientCheck = await dbClient.query(
+        'SELECT id FROM clients WHERE id = $1',
+        [client_id]
+      );
+      
+      // If client doesn't exist, create one with provided data or from token
+      if (clientCheck.rows.length === 0) {
+        const finalName = client_name || req.user.name || 'Cliente';
+        const finalEmail = client_email || req.user.email || '';
+        const finalPhone = client_phone || req.user.phone || '';
+        
+        await dbClient.query(
+          'INSERT INTO clients (id, name, email, phone) VALUES ($1, $2, $3, $4)',
+          [client_id, finalName, finalEmail, finalPhone]
+        );
+      }
+      
       const result = await dbClient.query(
-        'INSERT INTO appointments (id, client_id, vehicle_id, service_id, date, time, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [appointmentId, client_id, vehicle_id, service_id, date, time, notes || '']
+        'INSERT INTO appointments (id, client_id, vehicle_id, service_id, date, time, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+        [appointmentId, client_id, vehicle_id, service_id, date, time, notes || '', 'pending']
       );
       
       dbClient.release();
