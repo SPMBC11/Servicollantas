@@ -757,6 +757,172 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// --- Endpoint: Get Mechanics with Statistics ---
+app.get("/api/mechanics", authMiddleware(['admin']), async (req, res) => {
+  try {
+    // Obtener todos los mecánicos con sus estadísticas en una sola consulta
+    const result = await pool.query(`
+      SELECT 
+        u.id,
+        u.name,
+        u.phone,
+        u.email,
+        COUNT(a.id)::integer as totalappointments,
+        SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END)::integer as completedappointments,
+        COALESCE(AVG(CASE WHEN a.status = 'completed' THEN 5 ELSE 0 END), 0)::float as averagerating
+      FROM users u
+      LEFT JOIN appointments a ON u.id = a.service_provider_id
+      WHERE u.role = 'mechanic'
+      GROUP BY u.id, u.name, u.phone, u.email
+      ORDER BY u.name
+    `);
+    
+    const mechanicsWithStats = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      email: row.email,
+      totalAppointments: row.totalappointments || 0,
+      completedAppointments: row.completedappointments || 0,
+      averageRating: parseFloat(row.averagerating) || 0,
+      status: 'active'
+    }));
+    
+    res.json(mechanicsWithStats);
+  } catch (err) {
+    console.error("Error obteniendo mecánicos:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// --- Endpoint: Create Mechanic ---
+app.post("/api/mechanics", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { name, phone, email } = req.body;
+    
+    if (!name || !phone || !email) {
+      return res.status(400).json({ message: "Faltan datos requeridos" });
+    }
+    
+    const client = await pool.connect();
+    
+    // Generar contraseña aleatoria de 8 caracteres
+    const password = Math.random().toString(36).substring(2, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const mechanicId = `mechanic-${Date.now()}`;
+    
+    // Crear mecánico
+    const result = await client.query(
+      `INSERT INTO users (id, email, password_hash, role, name, phone) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING id, name, email, phone`,
+      [mechanicId, email, passwordHash, 'mechanic', name, phone]
+    );
+    
+    client.release();
+    
+    // Devolver credenciales
+    res.status(201).json({
+      mechanic: result.rows[0],
+      credentials: {
+        email: email,
+        password: password,
+        message: "⚠️ IMPORTANTE: Guarda estas credenciales. No se mostrarán de nuevo."
+      }
+    });
+  } catch (err) {
+    console.error("Error creando mecánico:", err);
+    if (err.code === '23505') {
+      res.status(400).json({ message: "El email ya está registrado" });
+    } else {
+      res.status(500).json({ message: "Error al crear mecánico" });
+    }
+  }
+});
+
+// --- Endpoint: Update Mechanic ---
+app.put("/api/mechanics/:id", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, email } = req.body;
+    
+    if (!name || !phone || !email) {
+      return res.status(400).json({ message: "Faltan campos requeridos" });
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET name = $1, phone = $2, email = $3 WHERE id = $4 AND role = 'mechanic' RETURNING id, name, email, phone`,
+      [name, phone, email, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Mecánico no encontrado" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error actualizando mecánico:", err);
+    if (err.code === '23505') {
+      res.status(400).json({ message: "El email ya está registrado" });
+    } else {
+      res.status(500).json({ message: "Error al actualizar mecánico" });
+    }
+  }
+});
+
+// --- Endpoint: Regenerate Mechanic Password ---
+app.post("/api/mechanics/regenerate-password", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: "ID de mecánico requerido" });
+    }
+
+    // Generate new password
+    const newPassword = Math.random().toString(36).substring(2, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const result = await pool.query(
+      `UPDATE users SET password_hash = $1 WHERE id = $2 AND role = 'mechanic' RETURNING id, email`,
+      [hashedPassword, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Mecánico no encontrado" });
+    }
+
+    res.json({ 
+      message: "Contraseña regenerada exitosamente",
+      password: newPassword,
+      email: result.rows[0].email
+    });
+  } catch (err) {
+    console.error("Error regenerando contraseña:", err);
+    res.status(500).json({ message: "Error al regenerar contraseña" });
+  }
+});
+
+// --- Endpoint: Delete Mechanic ---
+app.delete("/api/mechanics/:id", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `DELETE FROM users WHERE id = $1 AND role = 'mechanic' RETURNING id`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Mecánico no encontrado" });
+    }
+
+    res.json({ message: "Mecánico eliminado exitosamente" });
+  } catch (err) {
+    console.error("Error eliminando mecánico:", err);
+    res.status(500).json({ message: "Error al eliminar mecánico" });
+  }
+});
+
 // --- initialize database and start server ---
 async function startServer() {
   try {

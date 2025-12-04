@@ -41,6 +41,7 @@ import ManageServices from "./ManageServices";
 import ManageInvoices from "./ManageInvoices";
 import ManageReports from "./ManageReports";
 import ManageAppointments from "./ManageAppointments";
+import ManageMechanics from "./ManageMechanics";
 import SettingsPage from "./SettingsPage";
 import NotificationToast from "./NotificationToast";
 import Card from "../ui/Card";
@@ -120,6 +121,7 @@ export default function AdminDashboard() {
     { id: "services", label: "Servicios", icon: Wrench },
     { id: "appointments", label: "Citas", icon: Clock },
     { id: "invoices", label: "Facturas", icon: FileText },
+    { id: "mechanics", label: "Mecánicos", icon: UserCheck },
     { id: "reports", label: "Reportes", icon: BarChart },
     { id: "settings", label: "Configuración", icon: Settings },
   ];
@@ -311,6 +313,7 @@ export default function AdminDashboard() {
           {view === "services" && <ManageServices />}
           {view === "appointments" && <ManageAppointments />}
           {view === "invoices" && <ManageInvoices />}
+          {view === "mechanics" && <ManageMechanics />}
           {view === "reports" && <ManageReports />}
           {view === "settings" && <SettingsPage />}
         </div>

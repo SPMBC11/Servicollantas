@@ -256,7 +256,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                           >
                             <p className="font-medium">{vehicle.make} {vehicle.model}</p>
                             <p className="text-sm text-gray-500">{vehicle.year}</p>
-                            <p className="text-gray-500">Placa: {vehicle.license_plate}</p>
                           </div>
                         ))}
                       </div>
