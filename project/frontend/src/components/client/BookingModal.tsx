@@ -17,6 +17,19 @@ interface BookingModalProps {
 }
 
 /**
+ * Extended booking type to include vehicle creation fields
+ */
+interface ExtendedBooking extends Partial<Appointment> {
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  vehicleYear?: number;
+  vehicleLicensePlate?: string;
+}
+
+/**
  * @component BookingModal
  *
  * Multi-step modal for clients to book an appointment.
@@ -27,24 +40,17 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
   // States to control the modal flow
   const [step, setStep] = useState(1); // Current form step
   const [isLoading, setIsLoading] = useState(false); // Loading state for submission
-  const [booking, setBooking] = useState<Partial<Appointment & { customerName: string; customerPhone: string; customerEmail: string }>>({}); // In-progress booking data
+  const [booking, setBooking] = useState<ExtendedBooking>({}); // In-progress booking data
   const [showAddVehicle, setShowAddVehicle] = useState(false); // Show add vehicle form
-  const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: new Date().getFullYear(), license_plate: '' });
 
   // Hooks to access application contexts
   const { 
-    addAppointment, 
     appointments, 
-    clients, 
-    addClient, 
     selectedService, 
     selectService, 
     services, 
     vehicles, 
-    loading, 
-    error,
-    addVehicle,
-    loadVehicles
+    loading,
   } = useBooking();
 
   // Reset form when modal opens/closes
@@ -53,7 +59,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       const serviceId = selectedServiceId || selectedService;
       setBooking(prev => ({
         ...prev,
-        serviceId: serviceId ?? undefined
+        serviceId: serviceId ?? undefined,
+        vehicleLicensePlate: undefined // Ensure placa is cleared
       }));
       setStep(serviceId ? 2 : 1); // Solo salta al paso 2 si hay servicio seleccionado
       setIsLoading(false);
@@ -147,18 +154,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
         vehicleId = booking.vehicleId;
       }
 
-      // Save the appointment to the backend
-      const newAppointment: Appointment = {
-        id: `app${Date.now()}`,
-        clientId: clientId,
-        vehicleId: vehicleId,
-        serviceId: selectedServiceInfo.id,
-        date: booking.date!,
-        time: booking.time!,
-        status: 'pending',
-        notes: '',
-      };
-      
       // Call appointmentService directly with client data
       const token = localStorage.getItem('token');
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
@@ -189,9 +184,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
     } catch (err) {
       console.error('Error reservando cita:', err);
       alert('Error al reservar la cita. Intenta de nuevo.');
-    }
-
-    // Reset and close the modal
+    }    // Reset and close the modal
     setIsLoading(false);
     onClose();
     setStep(1);
@@ -324,7 +317,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                         type="number"
                         placeholder="Año"
                         value={booking.vehicleYear || ''}
-                        onChange={(e) => setBooking(prev => ({ ...prev, vehicleYear: parseInt(e.target.value) || '' }))}
+                        onChange={(e) => setBooking(prev => ({ ...prev, vehicleYear: e.target.value ? parseInt(e.target.value) : undefined }))}
                         className="border rounded-lg p-3 w-full"
                       />
                       <input
@@ -348,7 +341,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   )}
                   
                   {/* Next button - disabled if no vehicle data */}
-                  {(booking.vehicleId || (booking.vehicleMake && booking.vehicleModel && booking.vehicleYear && booking.vehicleLicensePlate)) && (
+                  {(booking.vehicleId || (booking.vehicleMake && booking.vehicleModel && booking.vehicleYear)) && (
                     <div className="flex gap-3 mt-6">
                       <button
                         onClick={() => setStep(3)}
@@ -360,8 +353,32 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   )}
                 </div>
               )}
-              {/* Step 3 - Date and Time */}
+              {/* Step 3 - License Plate */}
               {step === 3 && (
+                <div>
+                  <h4 className="text-lg font-medium mb-4">Ingresa la placa del vehículo</h4>
+                  <p className="text-gray-600 text-sm mb-4">Esta es la placa actual del vehículo (del dueño actual)</p>
+                  <input
+                    type="text"
+                    placeholder="Placa (ej: ABC-123)"
+                    value={booking.vehicleLicensePlate || ''}
+                    onChange={(e) => setBooking(prev => ({ ...prev, vehicleLicensePlate: e.target.value }))}
+                    className="border rounded-lg p-3 w-full mb-4"
+                  />
+                  {booking.vehicleId && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Vehículo seleccionado: <strong>{vehicles.find(v => v.id === booking.vehicleId)?.make} {vehicles.find(v => v.id === booking.vehicleId)?.model}</strong>
+                    </p>
+                  )}
+                  {!booking.vehicleId && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Vehículo a agregar: <strong>{booking.vehicleMake} {booking.vehicleModel} ({booking.vehicleYear})</strong>
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* Step 4 - Date and Time */}
+              {step === 4 && (
                 <div>
                   <h4 className="text-lg font-medium mb-4">Selecciona fecha y hora</h4>
                   <input
@@ -385,8 +402,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                 </div>
               )}
 
-              {/* Step 4 - Personal Details */}
-              {step === 4 && (
+              {/* Step 5 - Personal Details */}
+              {step === 5 && (
                 <div className="space-y-4">
                   <h4 className="text-lg font-medium">Tus datos</h4>
                   <input
@@ -412,8 +429,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   />
                 </div>
               )}
-              {/* Step 5 - Confirmation */}
-              {step === 5 && (
+              {/* Step 6 - Confirmation */}
+              {step === 6 && (
                 <div>
                   <h3 className="text-xl mb-3">Confirma tu cita</h3>
                   {selectedServiceInfo && (
@@ -439,14 +456,15 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
             <button onClick={() => setStep(s => s - 1)} className="px-6 py-3 border rounded-lg bg-white">Anterior</button>
           )}
           <div className="ml-auto">
-            {step < 5 ? (
+            {step < 6 ? (
               <button
                 onClick={() => setStep(s => s + 1)}
                 disabled={
                   (step === 1 && !booking.serviceId) ||
-                  (step === 2 && !booking.vehicleId) ||
-                  (step === 3 && (!booking.date || !booking.time)) ||
-                  (step === 4 && (!booking.customerName || !booking.customerPhone || !booking.customerEmail))
+                  (step === 2 && !(booking.vehicleId || (booking.vehicleMake && booking.vehicleModel && booking.vehicleYear))) ||
+                  (step === 3 && !booking.vehicleLicensePlate) ||
+                  (step === 4 && (!booking.date || !booking.time)) ||
+                  (step === 5 && (!booking.customerName || !booking.customerPhone || !booking.customerEmail))
                 }
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50"
               >
