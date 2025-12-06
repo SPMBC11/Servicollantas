@@ -157,7 +157,7 @@ const MechanicDashboard: React.FC = () => {
     todayAppointments: 2,
     averageRating: 4.8,
   };
-  const displayStats = totalAppointments > 0 ? stats : demoStats;
+  const displayStats = stats.totalAppointments > 0 ? stats : demoStats;
   const displayCompletionRate =
     displayStats.totalAppointments > 0
       ? ((displayStats.completedAppointments / displayStats.totalAppointments) * 100).toFixed(1)
