@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Wrench, Star, CheckCircle, Clock, AlertCircle, Plus, X, Copy, Check, Edit2, Mail, Trash2 } from "lucide-react";
+import { Wrench, Star, CheckCircle, Clock, AlertCircle, Plus, X, Copy, Check, Edit2, Mail, Trash2, Calendar, Eye } from "lucide-react";
 import Card from "../ui/Card";
+import { useNotification } from "../../context/NotificationContext";
 
 interface Mechanic {
   id: string;
@@ -30,6 +31,10 @@ const ManageMechanics: React.FC = () => {
   const [lastPassword, setLastPassword] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [formData, setFormData] = useState<NewMechanic>({ name: '', phone: '', email: '' });
+  const [selectedMechanicId, setSelectedMechanicId] = useState<string | null>(null);
+  const [mechanicAppointments, setMechanicAppointments] = useState<any[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const { addNotification } = useNotification();
   const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
   useEffect(() => {
@@ -72,13 +77,13 @@ const ManageMechanics: React.FC = () => {
     e.preventDefault();
     
     if (!formData.name || !formData.phone || !formData.email) {
-      alert("Por favor completa todos los campos");
+      addNotification("Por favor completa todos los campos", "warning");
       return;
     }
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("No hay token de autenticación");
+      addNotification("No hay token de autenticación", "error");
       return;
     }
 
@@ -94,7 +99,7 @@ const ManageMechanics: React.FC = () => {
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Error al crear mecánico");
+        addNotification(error.message || "Error al crear mecánico", "error");
         return;
       }
 
@@ -109,10 +114,11 @@ const ManageMechanics: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       const updatedMechanics = await reloadRes.json();
-      setMechanics(updatedMechanics);
+      setMechanics(Array.isArray(updatedMechanics) ? updatedMechanics : []);
+      addNotification("Mecánico creado exitosamente", "success");
     } catch (err) {
       console.error(err);
-      alert("Error de red al crear mecánico");
+      addNotification("Error de red al crear mecánico", "error");
     }
   };
 
@@ -136,13 +142,13 @@ const ManageMechanics: React.FC = () => {
     e.preventDefault();
     
     if (!formData.name || !formData.phone || !formData.email) {
-      alert("Por favor completa todos los campos");
+      addNotification("Por favor completa todos los campos", "warning");
       return;
     }
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("No hay token de autenticación");
+      addNotification("No hay token de autenticación", "error");
       return;
     }
 
@@ -158,7 +164,7 @@ const ManageMechanics: React.FC = () => {
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Error al actualizar mecánico");
+        addNotification(error.message || "Error al actualizar mecánico", "error");
         return;
       }
 
@@ -173,10 +179,10 @@ const ManageMechanics: React.FC = () => {
       });
       const updatedMechanics = await reloadRes.json();
       setMechanics(Array.isArray(updatedMechanics) ? updatedMechanics : []);
-      alert("Mecánico actualizado exitosamente");
+      addNotification("Mecánico actualizado exitosamente", "success");
     } catch (err) {
       console.error(err);
-      alert("Error de red al actualizar mecánico");
+      addNotification("Error de red al actualizar mecánico", "error");
     }
   };
 
@@ -187,7 +193,7 @@ const ManageMechanics: React.FC = () => {
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("No hay token de autenticación");
+      addNotification("No hay token de autenticación", "error");
       return;
     }
 
@@ -199,7 +205,7 @@ const ManageMechanics: React.FC = () => {
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Error al eliminar mecánico");
+        addNotification(error.message || "Error al eliminar mecánico", "error");
         return;
       }
 
@@ -210,10 +216,10 @@ const ManageMechanics: React.FC = () => {
       });
       const updatedMechanics = await reloadRes.json();
       setMechanics(Array.isArray(updatedMechanics) ? updatedMechanics : []);
-      alert("Mecánico eliminado exitosamente");
+      addNotification("Mecánico eliminado exitosamente", "success");
     } catch (err) {
       console.error(err);
-      alert("Error de red al eliminar mecánico");
+      addNotification("Error de red al eliminar mecánico", "error");
     }
   };
 
@@ -227,7 +233,7 @@ const ManageMechanics: React.FC = () => {
     try {
       // Regenerar contraseña
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:4000/api/mechanics/regenerate-password', {
+      const res = await fetch(`${backendUrl}/api/mechanics/regenerate-password`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -239,8 +245,63 @@ const ManageMechanics: React.FC = () => {
       const data = await res.json();
       setLastPassword(data.password);
       generateCredentialsMessage(mechanic, data.password);
+      addNotification("Contraseña regenerada exitosamente", "success");
     } catch (error) {
-      alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      addNotification('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'), "error");
+    }
+  };
+
+  const handleViewAppointments = async (mechanicId: string) => {
+    setSelectedMechanicId(mechanicId);
+    setLoadingAppointments(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${backendUrl}/api/bookings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!res.ok) {
+        addNotification("Error al obtener citas", "error");
+        setLoadingAppointments(false);
+        return;
+      }
+      
+      const allAppointments = await res.json();
+      // Filtrar citas del mecánico seleccionado
+      const mechanicAppts = allAppointments.filter((apt: any) => apt.service_provider_id === mechanicId);
+      setMechanicAppointments(mechanicAppts);
+    } catch (error) {
+      console.error(error);
+      addNotification("Error de red al obtener citas", "error");
+    } finally {
+      setLoadingAppointments(false);
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'pending': 'Pendiente',
+      'confirmed': 'Confirmada',
+      'completed': 'Completada',
+      'cancelled': 'Cancelada'
+    };
+    return labels[status] || status;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -604,6 +665,13 @@ const ManageMechanics: React.FC = () => {
                               📧
                             </button>
                             <button
+                              onClick={() => handleViewAppointments(mechanic.id)}
+                              className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs font-medium"
+                              title="Ver Citas"
+                            >
+                              <Eye className="w-3 h-3 inline" />
+                            </button>
+                            <button
                               onClick={() => handleDeleteMechanic(mechanic.id)}
                               className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium"
                               title="Eliminar"
@@ -679,6 +747,74 @@ const ManageMechanics: React.FC = () => {
             )}
           </div>
         </>
+      )}
+
+      {/* Modal de Citas del Mecánico */}
+      {selectedMechanicId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-xl font-semibold text-gray-800">
+                Citas de {mechanics.find(m => m.id === selectedMechanicId)?.name || 'Mecánico'}
+              </h3>
+              <button
+                onClick={() => {
+                  setSelectedMechanicId(null);
+                  setMechanicAppointments([]);
+                }}
+                className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              {loadingAppointments ? (
+                <div className="flex justify-center items-center py-12">
+                  <span className="text-blue-600 font-semibold">Cargando citas...</span>
+                </div>
+              ) : mechanicAppointments.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs uppercase bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="p-3">Fecha</th>
+                        <th className="p-3">Hora</th>
+                        <th className="p-3">Cliente</th>
+                        <th className="p-3">Vehículo</th>
+                        <th className="p-3">Servicio</th>
+                        <th className="p-3">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mechanicAppointments.map((apt: any) => (
+                        <tr key={apt.id} className="border-b hover:bg-gray-50">
+                          <td className="p-3">{apt.date}</td>
+                          <td className="p-3">{apt.time}</td>
+                          <td className="p-3 font-medium">{apt.client_name || 'N/A'}</td>
+                          <td className="p-3">
+                            {apt.license_plate ? `${apt.make} ${apt.model} (${apt.license_plate})` : 'N/A'}
+                          </td>
+                          <td className="p-3">{apt.service_name || 'N/A'}</td>
+                          <td className="p-3">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(apt.status)}`}>
+                              {getStatusLabel(apt.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 font-medium">No hay citas asignadas a este mecánico</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

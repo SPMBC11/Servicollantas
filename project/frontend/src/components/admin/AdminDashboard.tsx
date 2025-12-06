@@ -43,8 +43,8 @@ import ManageReports from "./ManageReports";
 import ManageAppointments from "./ManageAppointments";
 import ManageMechanics from "./ManageMechanics";
 import SettingsPage from "./SettingsPage";
-import NotificationToast from "./NotificationToast";
 import Card from "../ui/Card";
+import { authService } from "../../services/api";
 
 /**
  * AdminDashboard
@@ -60,6 +60,7 @@ export default function AdminDashboard() {
   const [services, setServices] = useState<Booking[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [mechanics, setMechanics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
@@ -72,22 +73,25 @@ export default function AdminDashboard() {
         const token = localStorage.getItem("token");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         
-        const [clientsRes, vehiclesRes, servicesRes, invoicesRes] = await Promise.all([
-          fetch(`${backendUrl}/api/clients`),
-          fetch(`${backendUrl}/api/vehicles`),
-          fetch(`${backendUrl}/api/bookings`),
+        const [clientsRes, vehiclesRes, servicesRes, invoicesRes, mechanicsRes] = await Promise.all([
+          fetch(`${backendUrl}/api/clients`, { headers }),
+          fetch(`${backendUrl}/api/vehicles`, { headers }),
+          fetch(`${backendUrl}/api/bookings`, { headers }),
           fetch(`${backendUrl}/api/invoices`, { headers }),
+          fetch(`${backendUrl}/api/mechanics`, { headers }),
         ]);
-        console.log("Responses:", { clientsRes, vehiclesRes, servicesRes, invoicesRes });
+        console.log("Responses:", { clientsRes, vehiclesRes, servicesRes, invoicesRes, mechanicsRes });
         const clientsData = clientsRes.ok ? await clientsRes.json() : [];
         const vehiclesData = vehiclesRes.ok ? await vehiclesRes.json() : [];
         const servicesData = servicesRes.ok ? await servicesRes.json() : [];
         const invoicesData = invoicesRes.ok ? await invoicesRes.json() : [];
+        const mechanicsData = mechanicsRes.ok ? await mechanicsRes.json() : [];
         setClients(clientsData);
         setVehicles(vehiclesData);
         setServices(servicesData);
         setInvoices(invoicesData);
-        console.log("Data set:", { clientsData, vehiclesData, servicesData, invoicesData });
+        setMechanics(mechanicsData);
+        console.log("Data set:", { clientsData, vehiclesData, servicesData, invoicesData, mechanicsData });
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -127,9 +131,14 @@ export default function AdminDashboard() {
   ];
 
   const handleLogout = () => {
+    // Limpiar toda la información de autenticación
+    authService.logout();
     localStorage.removeItem("isAdmin");
     localStorage.removeItem("adminEmail");
-    window.location.href = "/";
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    // Redirigir a login
+    window.location.href = "/login";
   };
 
   return (
@@ -258,12 +267,12 @@ export default function AdminDashboard() {
                     <Card title="Calificación Promedio" value={avgRating} icon={<Star className="text-yellow-600" />} bg="bg-yellow-100" />
                   </div>
 
-                  {/* Actividad reciente y clientes */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Actividad reciente, clientes y desempeño de mecánicos */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
                       <h3 className="text-lg font-semibold text-gray-800 mb-4">Actividad Reciente</h3>
                       <div className="space-y-3">
-                        {services.map((s) => (
+                        {services.slice(0, 5).map((s) => (
                           <div key={s.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                             <div className="w-8 h-8 bg-red-200 rounded-full flex items-center justify-center">
                               <UserCheck className="w-4 h-4 text-red-600" />
@@ -276,6 +285,9 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         ))}
+                        {services.length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-4">No hay actividad reciente</p>
+                        )}
                       </div>
                     </div>
 
@@ -284,7 +296,8 @@ export default function AdminDashboard() {
                       <div className="space-y-3">
                         {(() => {
                           const sortedClients = [...clients].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-                          return sortedClients.slice(0, 3).map((c) => (
+                          const topClients = sortedClients.slice(0, 3);
+                          return topClients.length > 0 ? topClients.map((c) => (
                             <div key={c.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                               <div className="w-10 h-10 bg-red-200 rounded-full flex items-center justify-center font-bold text-red-700">
                                 {c.name?.charAt(0) || "?"}
@@ -297,8 +310,51 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
                             </div>
-                          ));
+                          )) : (
+                            <p className="text-sm text-gray-500 text-center py-4">No hay clientes registrados</p>
+                          );
                         })()}
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <UserCheck className="w-5 h-5 text-red-600" />
+                        Desempeño de Mecánicos
+                      </h3>
+                      <div className="space-y-3">
+                        {mechanics.length > 0 ? (
+                          mechanics.slice(0, 5).map((mechanic) => {
+                            const completionRate = mechanic.totalAppointments > 0
+                              ? ((mechanic.completedAppointments / mechanic.totalAppointments) * 100).toFixed(0)
+                              : 0;
+                            return (
+                              <div key={mechanic.id} className="p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="font-medium text-gray-800">{mechanic.name}</p>
+                                  {mechanic.averageRating > 0 && (
+                                    <span className="flex items-center gap-1 text-xs text-yellow-600">
+                                      <Star className="w-3 h-3 fill-yellow-500" />
+                                      {mechanic.averageRating.toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-600 space-y-1">
+                                  <p>{mechanic.completedAppointments}/{mechanic.totalAppointments} completadas</p>
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div
+                                      className="bg-gradient-to-r from-blue-500 to-green-500 h-1.5 rounded-full transition-all"
+                                      style={{ width: `${completionRate}%` }}
+                                    />
+                                  </div>
+                                  <p className="text-gray-500">{completionRate}% de éxito</p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-gray-500 text-center py-4">No hay mecánicos registrados</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -318,8 +374,6 @@ export default function AdminDashboard() {
           {view === "settings" && <SettingsPage />}
         </div>
       </main>
-
-      <NotificationToast notifications={[]} onClear={() => {}} />
     </div>
   );
 }

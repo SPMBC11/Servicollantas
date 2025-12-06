@@ -1,18 +1,31 @@
 // src/components/auth/Login.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import logo from "../../assets/servi-collantas-logo.png"; // 👈 ojo, tu carpeta es "asset"
 import LoadingSpinner from "../ui/LoadingSpinner"; // 👈 importamos el spinner
 import { authService } from "../../services/api";
+import { useNotification } from "../../context/NotificationContext";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { addNotification } = useNotification();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false); // 👈 estado para loading
 
+  // No auto-redirect from login page
+  // Let ProtectedRoute handle redirects for authenticated users
+  // This allows users to logout and login again without issues
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Basic validation
+    if (!email || !password) {
+      addNotification("Por favor completa todos los campos", "warning");
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await authService.login(email, password);
@@ -21,18 +34,24 @@ const Login: React.FC = () => {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       
-      // Navegar según el rol del usuario
-      if (data.user.role === 'admin') {
-        navigate("/admin/dashboard");
-      } else if (data.user.role === 'mechanic') {
-        navigate("/mechanic/dashboard");
-      } else {
-        navigate("/");
-      }
+      addNotification(`Bienvenido, ${data.user.name}!`, "success");
+      
+      // Small delay to show notification before navigation
+      setTimeout(() => {
+        // Navegar según el rol del usuario
+        if (data.user.role === 'admin') {
+          navigate("/admin/dashboard", { replace: true });
+        } else if (data.user.role === 'mechanic') {
+          navigate("/mechanic/dashboard", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
+      }, 500);
     } catch (err: any) {
-      alert(err.message || "Error de red. Intenta de nuevo.");
+      addNotification(err.message || "Error de red. Intenta de nuevo.", "error");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

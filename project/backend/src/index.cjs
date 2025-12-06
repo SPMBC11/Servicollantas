@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
 const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const { pool, testConnection, initializeTables, seedInitialData } = require("./database");
 const config = require("./config");
 
@@ -371,7 +372,7 @@ app.delete("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (re
 // --- appointments/bookings endpoints ---
 app.post("/api/bookings", authMiddleware(), async (req, res) => {
   try {
-    const { client_id, vehicle_id, service_id, date, time, notes, client_name, client_email, client_phone } = req.body;
+    const { client_id, vehicle_id, service_id, date, time, notes, client_name, client_email, client_phone, service_provider_id } = req.body;
     const appointmentId = uuidv4();
     
     // Validate required fields
@@ -400,9 +401,21 @@ app.post("/api/bookings", authMiddleware(), async (req, res) => {
         );
       }
       
+      // Si se proporciona service_provider_id, validar que el mecánico existe
+      if (service_provider_id) {
+        const mechanicCheck = await dbClient.query(
+          'SELECT id FROM users WHERE id = $1 AND role = $2',
+          [service_provider_id, 'mechanic']
+        );
+        if (mechanicCheck.rows.length === 0) {
+          dbClient.release();
+          return res.status(400).json({ message: "Invalid mechanic ID" });
+        }
+      }
+      
       const result = await dbClient.query(
-        'INSERT INTO appointments (id, client_id, vehicle_id, service_id, date, time, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-        [appointmentId, client_id, vehicle_id, service_id, date, time, notes || '', 'pending']
+        'INSERT INTO appointments (id, client_id, vehicle_id, service_id, date, time, notes, status, service_provider_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+        [appointmentId, client_id, vehicle_id, service_id, date, time, notes || '', 'pending', service_provider_id || null]
       );
       
       dbClient.release();
@@ -430,11 +443,13 @@ app.get("/api/bookings", authMiddleware(["admin", "mechanic"]), async (req, res)
     const result = await client.query(`
       SELECT a.*, c.name as client_name, c.email as client_email, c.phone as client_phone,
              v.make, v.model, v.year, v.license_plate,
-             s.name as service_name, s.price as service_price
+             s.name as service_name, s.price as service_price,
+             m.name as mechanic_name, m.email as mechanic_email, m.phone as mechanic_phone
       FROM appointments a
       LEFT JOIN clients c ON a.client_id = c.id
       LEFT JOIN vehicles v ON a.vehicle_id = v.id
       LEFT JOIN services s ON a.service_id = s.id
+      LEFT JOIN users m ON a.service_provider_id = m.id
       ORDER BY a.date DESC, a.time DESC
     `);
     client.release();
@@ -448,12 +463,54 @@ app.get("/api/bookings", authMiddleware(["admin", "mechanic"]), async (req, res)
 app.put("/api/bookings/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, service_provider_id } = req.body;
     const client = await pool.connect();
     
+    // Build update query dynamically based on provided fields
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (status !== undefined) {
+      updates.push(`status = $${paramIndex}`);
+      values.push(status);
+      paramIndex++;
+    }
+    
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramIndex}`);
+      values.push(notes);
+      paramIndex++;
+    }
+    
+    if (service_provider_id !== undefined) {
+      // Validate mechanic if provided
+      if (service_provider_id) {
+        const mechanicCheck = await client.query(
+          'SELECT id FROM users WHERE id = $1 AND role = $2',
+          [service_provider_id, 'mechanic']
+        );
+        if (mechanicCheck.rows.length === 0) {
+          client.release();
+          return res.status(400).json({ message: "Invalid mechanic ID" });
+        }
+      }
+      updates.push(`service_provider_id = $${paramIndex}`);
+      values.push(service_provider_id || null);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      client.release();
+      return res.status(400).json({ message: "No fields to update" });
+    }
+    
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
     const result = await client.query(
-      'UPDATE appointments SET status = $1, notes = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-      [status, notes, id]
+      `UPDATE appointments SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
     );
     
     client.release();
@@ -775,21 +832,61 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-// --- Endpoint: Get Mechanics with Statistics ---
-app.get("/api/mechanics", authMiddleware(['admin']), async (req, res) => {
+// --- Endpoint: Get Available Mechanics (for client selection) ---
+app.get("/api/mechanics/available", async (req, res) => {
   try {
-    // Obtener todos los mecánicos con sus estadísticas en una sola consulta
+    // Obtener todos los mecánicos activos con calificaciones reales
     const result = await pool.query(`
       SELECT 
         u.id,
         u.name,
         u.phone,
         u.email,
-        COUNT(a.id)::integer as totalappointments,
+        COUNT(DISTINCT a.id)::integer as totalappointments,
         SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END)::integer as completedappointments,
-        COALESCE(AVG(CASE WHEN a.status = 'completed' THEN 5 ELSE 0 END), 0)::float as averagerating
+        COALESCE(AVG(r.rating), 0)::float as averagerating
       FROM users u
       LEFT JOIN appointments a ON u.id = a.service_provider_id
+      LEFT JOIN ratings r ON u.id = r.mechanic_id
+      WHERE u.role = 'mechanic'
+      GROUP BY u.id, u.name, u.phone, u.email
+      ORDER BY u.name
+    `);
+    
+    const mechanics = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      email: row.email,
+      totalAppointments: row.totalappointments || 0,
+      completedAppointments: row.completedappointments || 0,
+      averageRating: parseFloat(row.averagerating) || 0,
+    }));
+    
+    res.json(mechanics);
+  } catch (err) {
+    console.error("Error obteniendo mecánicos disponibles:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// --- Endpoint: Get Mechanics with Statistics ---
+app.get("/api/mechanics", authMiddleware(['admin']), async (req, res) => {
+  try {
+    // Obtener todos los mecánicos con sus estadísticas en una sola consulta
+    // Ahora incluye calificaciones reales de la tabla ratings
+    const result = await pool.query(`
+      SELECT 
+        u.id,
+        u.name,
+        u.phone,
+        u.email,
+        COUNT(DISTINCT a.id)::integer as totalappointments,
+        SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END)::integer as completedappointments,
+        COALESCE(AVG(r.rating), 0)::float as averagerating
+      FROM users u
+      LEFT JOIN appointments a ON u.id = a.service_provider_id
+      LEFT JOIN ratings r ON u.id = r.mechanic_id
       WHERE u.role = 'mechanic'
       GROUP BY u.id, u.name, u.phone, u.email
       ORDER BY u.name
@@ -938,7 +1035,7 @@ app.get("/api/mechanics/profile", authMiddleware(['mechanic']), async (req, res)
 
     const mechanic = mechanicRes.rows[0];
 
-    // Obtener citas del mecánico (puede no tener service_provider_id asignado, mostrar todas)
+    // Obtener citas del mecánico filtradas por service_provider_id
     const appointmentsRes = await pool.query(
       `SELECT 
         a.id,
@@ -958,64 +1055,16 @@ app.get("/api/mechanics/profile", authMiddleware(['mechanic']), async (req, res)
       LEFT JOIN clients c ON a.client_id = c.id
       LEFT JOIN vehicles v ON a.vehicle_id = v.id
       LEFT JOIN services s ON a.service_id = s.id
-      ORDER BY a.date DESC`
+      WHERE a.service_provider_id = $1
+      ORDER BY a.date DESC, a.time DESC`,
+      [mechanicId]
     );
 
-    console.log('Appointments found:', appointmentsRes.rows.length);
+    console.log('Appointments found for mechanic:', appointmentsRes.rows.length);
 
-    // Si no hay citas, usar datos de demostración
-    let appointments = appointmentsRes.rows;
-    if (appointments.length === 0) {
-      appointments = [
-        {
-          id: 'apt-1',
-          clientName: 'Juan Pérez',
-          vehicleInfo: 'Toyota Corolla',
-          serviceName: 'Cambio de aceite',
-          date: new Date().toISOString().split('T')[0],
-          time: '09:00',
-          status: 'pendiente'
-        },
-        {
-          id: 'apt-2',
-          clientName: 'María López',
-          vehicleInfo: 'Honda Civic',
-          serviceName: 'Revisión general',
-          date: new Date().toISOString().split('T')[0],
-          time: '10:30',
-          status: 'pendiente'
-        },
-        {
-          id: 'apt-3',
-          clientName: 'Carlos García',
-          vehicleInfo: 'Ford Focus',
-          serviceName: 'Reparación de frenos',
-          date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-          time: '14:00',
-          status: 'confirmada'
-        },
-        {
-          id: 'apt-4',
-          clientName: 'Ana Martínez',
-          vehicleInfo: 'Chevrolet Spark',
-          serviceName: 'Cambio de llantas',
-          date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-          time: '11:00',
-          status: 'completada'
-        },
-        {
-          id: 'apt-5',
-          clientName: 'Pedro Rodríguez',
-          vehicleInfo: 'Volkswagen Jetta',
-          serviceName: 'Alineación',
-          date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
-          time: '15:30',
-          status: 'completada'
-        }
-      ];
-    }
+    const appointments = appointmentsRes.rows;
 
-    // Estadísticas
+    // Estadísticas basadas en las citas reales del mecánico
     const totalAppointments = appointments.length;
     const completedAppointments = appointments.filter(
       (apt) => apt.status === 'completada'
@@ -1027,8 +1076,14 @@ app.get("/api/mechanics/profile", authMiddleware(['mechanic']), async (req, res)
       (apt) => apt.date === today
     ).length;
 
-    // Calificación promedio (simulada por ahora - se puede conectar a una tabla de ratings)
-    const averageRating = 4.5;
+    // Calificación promedio basada en ratings reales
+    const ratingResult = await pool.query(
+      `SELECT COALESCE(AVG(rating), 0)::float as avg_rating
+       FROM ratings
+       WHERE mechanic_id = $1`,
+      [mechanicId]
+    );
+    const averageRating = parseFloat(ratingResult.rows[0].avg_rating) || 0;
 
     const response = {
       mechanic,
@@ -1065,6 +1120,245 @@ app.delete("/api/mechanics/:id", authMiddleware(['admin']), async (req, res) => 
   } catch (err) {
     console.error("Error eliminando mecánico:", err);
     res.status(500).json({ message: "Error al eliminar mecánico" });
+  }
+});
+
+// --- Endpoint: Update Mechanic Profile (Name and Password) ---
+app.put("/api/mechanics/profile/update", authMiddleware(['mechanic']), async (req, res) => {
+  try {
+    const mechanicId = req.user.id;
+    const { name, currentPassword, newPassword } = req.body;
+    
+    const client = await pool.connect();
+    
+    try {
+      // Si se quiere cambiar la contraseña, verificar la actual
+      if (newPassword) {
+        if (!currentPassword) {
+          client.release();
+          return res.status(400).json({ message: "Debes proporcionar la contraseña actual" });
+        }
+        
+        const userResult = await client.query(
+          'SELECT password_hash FROM users WHERE id = $1',
+          [mechanicId]
+        );
+        
+        if (userResult.rows.length === 0) {
+          client.release();
+          return res.status(404).json({ message: "Mecánico no encontrado" });
+        }
+        
+        const currentHash = userResult.rows[0].password_hash;
+        if (!bcrypt.compareSync(currentPassword, currentHash)) {
+          client.release();
+          return res.status(401).json({ message: "Contraseña actual incorrecta" });
+        }
+        
+        // Actualizar contraseña
+        const newPasswordHash = await bcrypt.hash(newPassword, 10);
+        await client.query(
+          'UPDATE users SET password_hash = $1 WHERE id = $2',
+          [newPasswordHash, mechanicId]
+        );
+      }
+      
+      // Si se quiere actualizar el nombre
+      if (name) {
+        await client.query(
+          'UPDATE users SET name = $1 WHERE id = $2',
+          [name, mechanicId]
+        );
+      }
+      
+      // Obtener datos actualizados
+      const updatedResult = await client.query(
+        'SELECT id, name, email, phone FROM users WHERE id = $1',
+        [mechanicId]
+      );
+      
+      client.release();
+      res.json(updatedResult.rows[0]);
+    } catch (queryErr) {
+      client.release();
+      throw queryErr;
+    }
+  } catch (err) {
+    console.error("Error actualizando perfil del mecánico:", err);
+    res.status(500).json({ message: "Error al actualizar perfil" });
+  }
+});
+
+// --- Endpoint: Generate Rating Link for Appointment ---
+app.post("/api/ratings/generate-link", authMiddleware(['admin']), async (req, res) => {
+  try {
+    const { appointmentId } = req.body;
+    
+    if (!appointmentId) {
+      return res.status(400).json({ message: "appointmentId es requerido" });
+    }
+    
+    // Verificar que la cita existe y está completada
+    const appointmentCheck = await pool.query(
+      `SELECT a.*, a.service_provider_id as mechanic_id 
+       FROM appointments a 
+       WHERE a.id = $1 AND a.status = 'completed'`,
+      [appointmentId]
+    );
+    
+    if (appointmentCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Cita completada no encontrada" });
+    }
+    
+    const appointment = appointmentCheck.rows[0];
+    
+    if (!appointment.mechanic_id) {
+      return res.status(400).json({ message: "La cita no tiene mecánico asignado" });
+    }
+    
+    // Verificar si ya existe un rating para esta cita
+    const existingRating = await pool.query(
+      'SELECT id FROM ratings WHERE appointment_id = $1',
+      [appointmentId]
+    );
+    
+    if (existingRating.rows.length > 0) {
+      return res.status(400).json({ message: "Esta cita ya fue calificada" });
+    }
+    
+    // Generar token único
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenId = `rt-${Date.now()}`;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // Expira en 30 días
+    
+    await pool.query(
+      `INSERT INTO rating_tokens (id, appointment_id, token, expires_at) 
+       VALUES ($1, $2, $3, $4)`,
+      [tokenId, appointmentId, token, expiresAt]
+    );
+    
+    // Generar URL del frontend
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const ratingUrl = `${frontendUrl}/rate/${token}`;
+    
+    res.json({
+      token,
+      url: ratingUrl,
+      expiresAt: expiresAt.toISOString(),
+      message: "Link de calificación generado exitosamente"
+    });
+  } catch (err) {
+    console.error("Error generando link de calificación:", err);
+    res.status(500).json({ message: "Error al generar link de calificación" });
+  }
+});
+
+// --- Endpoint: Get Rating Token Info (Public) ---
+app.get("/api/ratings/token/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const tokenResult = await pool.query(
+      `SELECT rt.*, a.id as appointment_id, a.date, a.time,
+              c.name as client_name, c.email as client_email,
+              CONCAT(v.make, ' ', v.model) as vehicle_info,
+              s.name as service_name,
+              m.name as mechanic_name, m.id as mechanic_id
+       FROM rating_tokens rt
+       JOIN appointments a ON rt.appointment_id = a.id
+       JOIN clients c ON a.client_id = c.id
+       JOIN vehicles v ON a.vehicle_id = v.id
+       LEFT JOIN services s ON a.service_id = s.id
+       JOIN users m ON a.service_provider_id = m.id
+       WHERE rt.token = $1 AND rt.used = FALSE AND rt.expires_at > NOW()`,
+      [token]
+    );
+    
+    if (tokenResult.rows.length === 0) {
+      return res.status(404).json({ message: "Token inválido o expirado" });
+    }
+    
+    const tokenData = tokenResult.rows[0];
+    
+    res.json({
+      appointmentId: tokenData.appointment_id,
+      mechanicId: tokenData.mechanic_id,
+      mechanicName: tokenData.mechanic_name,
+      clientName: tokenData.client_name,
+      vehicleInfo: tokenData.vehicle_info,
+      serviceName: tokenData.service_name,
+      date: tokenData.date,
+      time: tokenData.time
+    });
+  } catch (err) {
+    console.error("Error obteniendo información del token:", err);
+    res.status(500).json({ message: "Error al obtener información del token" });
+  }
+});
+
+// --- Endpoint: Submit Rating (Public) ---
+app.post("/api/ratings/submit", async (req, res) => {
+  try {
+    const { token, rating, comment, clientName, clientEmail } = req.body;
+    
+    if (!token || !rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: "Token y calificación (1-5) son requeridos" });
+    }
+    
+    const client = await pool.connect();
+    
+    try {
+      // Verificar token
+      const tokenResult = await client.query(
+        `SELECT rt.*, a.service_provider_id as mechanic_id
+         FROM rating_tokens rt
+         JOIN appointments a ON rt.appointment_id = a.id
+         WHERE rt.token = $1 AND rt.used = FALSE AND rt.expires_at > NOW()`,
+        [token]
+      );
+      
+      if (tokenResult.rows.length === 0) {
+        client.release();
+        return res.status(404).json({ message: "Token inválido o expirado" });
+      }
+      
+      const tokenData = tokenResult.rows[0];
+      
+      // Verificar si ya existe rating
+      const existingRating = await client.query(
+        'SELECT id FROM ratings WHERE appointment_id = $1',
+        [tokenData.appointment_id]
+      );
+      
+      if (existingRating.rows.length > 0) {
+        client.release();
+        return res.status(400).json({ message: "Esta cita ya fue calificada" });
+      }
+      
+      // Crear rating
+      const ratingId = `rating-${Date.now()}`;
+      await client.query(
+        `INSERT INTO ratings (id, appointment_id, mechanic_id, rating, comment, client_name, client_email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [ratingId, tokenData.appointment_id, tokenData.mechanic_id, rating, comment || null, clientName || null, clientEmail || null]
+      );
+      
+      // Marcar token como usado
+      await client.query(
+        'UPDATE rating_tokens SET used = TRUE WHERE id = $1',
+        [tokenData.id]
+      );
+      
+      client.release();
+      res.json({ message: "Calificación enviada exitosamente", ratingId });
+    } catch (queryErr) {
+      client.release();
+      throw queryErr;
+    }
+  } catch (err) {
+    console.error("Error enviando calificación:", err);
+    res.status(500).json({ message: "Error al enviar calificación" });
   }
 });
 

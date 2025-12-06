@@ -4,6 +4,7 @@ import {  Appointment } from '../../types';
 import { mockTimeSlots } from '../../data/mockData';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import { vehicleService } from '../../services/api';
+import { useNotification } from '../../context/NotificationContext';
 
 /**
  * @interface BookingModalProps
@@ -27,6 +28,17 @@ interface ExtendedBooking extends Partial<Appointment> {
   vehicleModel?: string;
   vehicleYear?: number;
   vehicleLicensePlate?: string;
+  serviceProviderId?: string;
+}
+
+interface Mechanic {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  totalAppointments: number;
+  completedAppointments: number;
+  averageRating: number;
 }
 
 /**
@@ -42,6 +54,9 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
   const [isLoading, setIsLoading] = useState(false); // Loading state for submission
   const [booking, setBooking] = useState<ExtendedBooking>({}); // In-progress booking data
   const [showAddVehicle, setShowAddVehicle] = useState(false); // Show add vehicle form
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]); // Available mechanics
+  const [loadingMechanics, setLoadingMechanics] = useState(false); // Loading mechanics
+  const { addNotification } = useNotification();
 
   // Hooks to access application contexts
   const { 
@@ -53,6 +68,29 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
     loading,
   } = useBooking();
 
+  // Load available mechanics
+  useEffect(() => {
+    const loadMechanics = async () => {
+      setLoadingMechanics(true);
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+        const res = await fetch(`${backendUrl}/api/mechanics/available`);
+        if (res.ok) {
+          const data = await res.json();
+          setMechanics(data);
+        }
+      } catch (error) {
+        console.error('Error loading mechanics:', error);
+      } finally {
+        setLoadingMechanics(false);
+      }
+    };
+    
+    if (isOpen) {
+      loadMechanics();
+    }
+  }, [isOpen]);
+
   // Reset form when modal opens/closes
   useEffect(() => {
     if (isOpen) {
@@ -60,7 +98,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       setBooking(prev => ({
         ...prev,
         serviceId: serviceId ?? undefined,
-        vehicleLicensePlate: undefined // Ensure placa is cleared
+        vehicleLicensePlate: undefined, // Ensure placa is cleared
+        serviceProviderId: undefined // Clear mechanic selection
       }));
       setStep(serviceId ? 2 : 1); // Solo salta al paso 2 si hay servicio seleccionado
       setIsLoading(false);
@@ -104,8 +143,12 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
         return;
       }
 
+      // Get selected mechanic info
+      const selectedMechanic = mechanics.find(m => m.id === booking.serviceProviderId);
+      const mechanicInfo = selectedMechanic ? `\n🔧 Mecánico: ${selectedMechanic.name}` : '';
+
       // Build the message for WhatsApp
-      const message = `¡Hola! Me gustaría reservar una cita:\n\n📅 Fecha: ${booking.date}\n🕐 Hora: ${booking.time}\n🚗 Vehículo: ${vehicleInfo.make} ${vehicleInfo.model} (${vehicleInfo.license_plate})\n🛠️ Servicio: ${selectedServiceInfo.name}\n💰 Precio: $${(typeof selectedServiceInfo.price === 'string' ? parseFloat(selectedServiceInfo.price) : selectedServiceInfo.price).toFixed(2)}\n\n👤 Mis datos:\n• Nombre: ${booking.customerName}\n• Teléfono: ${booking.customerPhone}\n• Email: ${booking.customerEmail}\n\n¿Está disponible? ¡Gracias!`;
+      const message = `¡Hola! Me gustaría reservar una cita:\n\n📅 Fecha: ${booking.date}\n🕐 Hora: ${booking.time}\n🚗 Vehículo: ${vehicleInfo.make} ${vehicleInfo.model} (${vehicleInfo.license_plate})\n🛠️ Servicio: ${selectedServiceInfo.name}${mechanicInfo}\n💰 Precio: $${(typeof selectedServiceInfo.price === 'string' ? parseFloat(selectedServiceInfo.price) : selectedServiceInfo.price).toFixed(2)}\n\n👤 Mis datos:\n• Nombre: ${booking.customerName}\n• Teléfono: ${booking.customerPhone}\n• Email: ${booking.customerEmail}\n\n¿Está disponible? ¡Gracias!`;
       
       // Assuming a default phone number for the service provider for WhatsApp
       const serviceProviderPhone = '573053113534'; // ServiCollantas phone
@@ -172,7 +215,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
           notes: '',
           client_name: booking.customerName,
           client_email: booking.customerEmail,
-          client_phone: booking.customerPhone
+          client_phone: booking.customerPhone,
+          service_provider_id: booking.serviceProviderId || null
         })
       });
       
@@ -180,10 +224,10 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
         throw new Error('Error al crear la cita');
       }
 
-      alert('¡Cita reservada exitosamente!');
+      addNotification('¡Cita reservada exitosamente!', 'success');
     } catch (err) {
       console.error('Error reservando cita:', err);
-      alert('Error al reservar la cita. Intenta de nuevo.');
+      addNotification('Error al reservar la cita. Intenta de nuevo.', 'error');
     }    // Reset and close the modal
     setIsLoading(false);
     onClose();
@@ -402,8 +446,65 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                 </div>
               )}
 
-              {/* Step 5 - Personal Details */}
+              {/* Step 5 - Select Mechanic */}
               {step === 5 && (
+                <div>
+                  <h4 className="text-lg font-medium mb-4">Selecciona un mecánico (opcional)</h4>
+                  <p className="text-gray-600 text-sm mb-4">Puedes elegir un mecánico específico o dejar que se asigne automáticamente</p>
+                  {loadingMechanics ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">Cargando mecánicos disponibles...</p>
+                    </div>
+                  ) : mechanics.length > 0 ? (
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => setBooking(prev => ({ ...prev, serviceProviderId: undefined }))}
+                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                          !booking.serviceProviderId 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <p className="font-medium">Sin preferencia (asignación automática)</p>
+                        <p className="text-sm text-gray-500">Dejaremos que el sistema asigne el mecánico disponible</p>
+                      </button>
+                      {mechanics.map(mechanic => (
+                        <button
+                          key={mechanic.id}
+                          onClick={() => setBooking(prev => ({ ...prev, serviceProviderId: mechanic.id }))}
+                          className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                            booking.serviceProviderId === mechanic.id 
+                              ? 'border-blue-500 bg-blue-50' 
+                              : 'border-gray-200 hover:border-blue-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{mechanic.name}</p>
+                              <p className="text-sm text-gray-500">{mechanic.email}</p>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                                <span>{mechanic.completedAppointments} completadas</span>
+                                {mechanic.averageRating > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    ⭐ {mechanic.averageRating.toFixed(1)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No hay mecánicos disponibles en este momento</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 6 - Personal Details */}
+              {step === 6 && (
                 <div className="space-y-4">
                   <h4 className="text-lg font-medium">Tus datos</h4>
                   <input
@@ -429,8 +530,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   />
                 </div>
               )}
-              {/* Step 6 - Confirmation */}
-              {step === 6 && (
+              {/* Step 7 - Confirmation */}
+              {step === 7 && (
                 <div>
                   <h3 className="text-xl mb-3">Confirma tu cita</h3>
                   {selectedServiceInfo && (
@@ -441,6 +542,9 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   )}
                   <p><strong>Fecha:</strong> {booking.date}</p>
                   <p><strong>Hora:</strong> {booking.time}</p>
+                  {booking.serviceProviderId && (
+                    <p><strong>Mecánico:</strong> {mechanics.find(m => m.id === booking.serviceProviderId)?.name || 'N/A'}</p>
+                  )}
                   <p><strong>Nombre:</strong> {booking.customerName}</p>
                   <p><strong>Teléfono:</strong> {booking.customerPhone}</p>
                   <p><strong>Email:</strong> {booking.customerEmail}</p>
@@ -456,7 +560,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
             <button onClick={() => setStep(s => s - 1)} className="px-6 py-3 border rounded-lg bg-white">Anterior</button>
           )}
           <div className="ml-auto">
-            {step < 6 ? (
+            {step < 7 ? (
               <button
                 onClick={() => setStep(s => s + 1)}
                 disabled={
@@ -464,7 +568,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   (step === 2 && !(booking.vehicleId || (booking.vehicleMake && booking.vehicleModel && booking.vehicleYear))) ||
                   (step === 3 && !booking.vehicleLicensePlate) ||
                   (step === 4 && (!booking.date || !booking.time)) ||
-                  (step === 5 && (!booking.customerName || !booking.customerPhone || !booking.customerEmail))
+                  (step === 5 && false) || // Step 5 (mechanic) is optional
+                  (step === 6 && (!booking.customerName || !booking.customerPhone || !booking.customerEmail))
                 }
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50"
               >

@@ -12,8 +12,14 @@ import {
   Wrench,
   AlertCircle,
   TrendingUp,
+  User,
+  Lock,
+  Save,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
-import Card from '../ui/Card';
+import { useNotification } from '../../context/NotificationContext';
+import { authService } from '../../services/api';
 
 interface Appointment {
   id: string;
@@ -43,6 +49,17 @@ const MechanicDashboard: React.FC = () => {
     averageRating: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mechanicInfo, setMechanicInfo] = useState<any>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({
+    name: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const { addNotification } = useNotification();
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
   // Obtener datos del mecánico logueado
@@ -71,9 +88,10 @@ const MechanicDashboard: React.FC = () => {
         console.log('Response status:', res.status);
 
         if (!res.ok) {
-          const error = await res.json();
-          console.error('Error response:', error);
-          // window.location.href = '/login';
+          const errorData = await res.json().catch(() => ({ message: 'Error desconocido' }));
+          console.error('Error response:', errorData);
+          setError(errorData.message || 'Error al cargar datos');
+          addNotification(errorData.message || 'Error al cargar datos del mecánico', 'error');
           setLoading(false);
           return;
         }
@@ -88,8 +106,15 @@ const MechanicDashboard: React.FC = () => {
           todayAppointments: data.todayAppointments || 0,
           averageRating: data.averageRating || 0,
         });
-      } catch (error) {
+        setMechanicInfo(data.mechanic || null);
+        if (data.mechanic) {
+          setSettingsForm(prev => ({ ...prev, name: data.mechanic.name || '' }));
+        }
+        setError(null);
+      } catch (error: any) {
         console.error('Error fetching mechanic data:', error);
+        setError('Error de conexión con el servidor');
+        addNotification('Error de conexión con el servidor', 'error');
       } finally {
         setLoading(false);
       }
@@ -102,9 +127,93 @@ const MechanicDashboard: React.FC = () => {
   }, [backendUrl]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('mechanicEmail');
-    window.location.href = '/';
+    authService.logout();
+    window.location.href = '/login';
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsLoading(true);
+
+    // Validar que si se cambia la contraseña, ambas coincidan
+    if (settingsForm.newPassword) {
+      if (settingsForm.newPassword !== settingsForm.confirmPassword) {
+        addNotification('Las contraseñas no coinciden', 'error');
+        setSettingsLoading(false);
+        return;
+      }
+      if (settingsForm.newPassword.length < 6) {
+        addNotification('La contraseña debe tener al menos 6 caracteres', 'error');
+        setSettingsLoading(false);
+        return;
+      }
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        addNotification('No hay token de autenticación', 'error');
+        setSettingsLoading(false);
+        return;
+      }
+
+      const updateData: any = {};
+      if (settingsForm.name && settingsForm.name !== mechanicInfo?.name) {
+        updateData.name = settingsForm.name;
+      }
+      if (settingsForm.newPassword) {
+        updateData.currentPassword = settingsForm.currentPassword;
+        updateData.newPassword = settingsForm.newPassword;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        addNotification('No hay cambios para guardar', 'info');
+        setSettingsLoading(false);
+        return;
+      }
+
+      const res = await fetch(`${backendUrl}/api/mechanics/profile/update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        addNotification(errorData.message || 'Error al actualizar perfil', 'error');
+        setSettingsLoading(false);
+        return;
+      }
+
+      const updatedData = await res.json();
+      setMechanicInfo(updatedData);
+      
+      // Actualizar localStorage con el nuevo nombre
+      const user = localStorage.getItem('user');
+      if (user) {
+        const userData = JSON.parse(user);
+        userData.name = updatedData.name;
+        localStorage.setItem('user', JSON.stringify(userData));
+      }
+
+      // Limpiar formulario de contraseña
+      setSettingsForm(prev => ({
+        ...prev,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      }));
+
+      addNotification('Perfil actualizado exitosamente', 'success');
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      addNotification('Error de red al actualizar perfil', 'error');
+    } finally {
+      setSettingsLoading(false);
+    }
   };
 
   const menuItems = [
@@ -117,50 +226,6 @@ const MechanicDashboard: React.FC = () => {
   const completionRate =
     stats.totalAppointments > 0
       ? ((stats.completedAppointments / stats.totalAppointments) * 100).toFixed(1)
-      : 0;
-
-  // Datos de prueba para demostración
-  const demoAppointments: Appointment[] = [
-    {
-      id: '1',
-      clientName: 'Juan García',
-      vehicleInfo: 'Toyota Corolla',
-      serviceName: 'Cambio de aceite',
-      date: new Date().toISOString().slice(0, 10),
-      time: '09:00',
-      status: 'pendiente',
-    },
-    {
-      id: '2',
-      clientName: 'María López',
-      vehicleInfo: 'Honda Civic',
-      serviceName: 'Alineación',
-      date: new Date().toISOString().slice(0, 10),
-      time: '14:00',
-      status: 'pendiente',
-    },
-    {
-      id: '3',
-      clientName: 'Pedro Martínez',
-      vehicleInfo: 'BMW X5',
-      serviceName: 'Revisión general',
-      date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-      time: '10:30',
-      status: 'confirmada',
-    },
-  ];
-
-  const displayAppointments = appointments.length > 0 ? appointments : demoAppointments;
-  const demoStats = {
-    totalAppointments: 15,
-    completedAppointments: 12,
-    todayAppointments: 2,
-    averageRating: 4.8,
-  };
-  const displayStats = stats.totalAppointments > 0 ? stats : demoStats;
-  const displayCompletionRate =
-    displayStats.totalAppointments > 0
-      ? ((displayStats.completedAppointments / displayStats.totalAppointments) * 100).toFixed(1)
       : 0;
 
   return (
@@ -219,6 +284,7 @@ const MechanicDashboard: React.FC = () => {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+            aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
           >
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -239,53 +305,69 @@ const MechanicDashboard: React.FC = () => {
                 <p className="text-gray-600 font-medium">Cargando datos...</p>
               </div>
             </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center p-6 bg-red-50 rounded-lg border border-red-200 max-w-md">
+                <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+                <p className="text-red-800 font-semibold mb-2">Error al cargar datos</p>
+                <p className="text-red-600 text-sm">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Reintentar
+                </button>
+              </div>
+            </div>
           ) : view === 'dashboard' ? (
             <div className="p-6 space-y-6">
               {/* Tarjetas de estadísticas */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="bg-white p-6 rounded-lg shadow">
+                <div className="bg-white p-6 rounded-lg shadow">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">Citas Totales</p>
-                      <p className="text-3xl font-bold text-blue-600 mt-2">{displayStats.totalAppointments}</p>
+                      <p className="text-3xl font-bold text-blue-600 mt-2">
+                        {stats.totalAppointments}
+                      </p>
                     </div>
                     <Calendar className="w-12 h-12 text-blue-100" />
                   </div>
-                </Card>
+                </div>
 
-                <Card className="bg-white p-6 rounded-lg shadow">
+                <div className="bg-white p-6 rounded-lg shadow">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">Completadas</p>
-                      <p className="text-3xl font-bold text-green-600 mt-2">{displayStats.completedAppointments}</p>
+                      <p className="text-3xl font-bold text-green-600 mt-2">{stats.completedAppointments}</p>
                     </div>
                     <CheckCircle className="w-12 h-12 text-green-100" />
                   </div>
-                </Card>
+                </div>
 
-                <Card className="bg-white p-6 rounded-lg shadow">
+                <div className="bg-white p-6 rounded-lg shadow">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">Hoy</p>
-                      <p className="text-3xl font-bold text-orange-600 mt-2">{displayStats.todayAppointments}</p>
+                      <p className="text-3xl font-bold text-orange-600 mt-2">{stats.todayAppointments}</p>
                     </div>
                     <Clock className="w-12 h-12 text-orange-100" />
                   </div>
-                </Card>
+                </div>
 
-                <Card className="bg-white p-6 rounded-lg shadow">
+                <div className="bg-white p-6 rounded-lg shadow">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">Calificación</p>
-                      <p className="text-3xl font-bold text-yellow-600 mt-2">{displayStats.averageRating.toFixed(1)}</p>
+                      <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.averageRating > 0 ? stats.averageRating.toFixed(1) : 'N/A'}</p>
                     </div>
                     <Star className="w-12 h-12 text-yellow-100 fill-yellow-100" />
                   </div>
-                </Card>
+                </div>
               </div>
 
               {/* Tasa de completitud */}
-              <Card className="bg-white p-6 rounded-lg shadow">
+              <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                   <TrendingUp className="text-blue-600" size={24} />
                   Tasa de Completitud
@@ -295,23 +377,23 @@ const MechanicDashboard: React.FC = () => {
                     <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                        style={{ width: `${displayCompletionRate}%` }}
+                        style={{ width: `${completionRate}%` }}
                       />
                     </div>
                   </div>
-                  <span className="text-2xl font-bold text-blue-600">{displayCompletionRate}%</span>
+                  <span className="text-2xl font-bold text-blue-600">{completionRate}%</span>
                 </div>
-              </Card>
+              </div>
 
               {/* Próximas citas */}
-              <Card className="bg-white p-6 rounded-lg shadow">
+              <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                   <Wrench className="text-blue-600" size={24} />
                   Próximas Citas
                 </h3>
-                {displayAppointments.length > 0 ? (
+                {appointments.length > 0 ? (
                   <div className="space-y-3">
-                    {displayAppointments.slice(0, 5).map((apt) => (
+                    {appointments.slice(0, 5).map((apt) => (
                       <div
                         key={apt.id}
                         className="flex items-start justify-between p-4 bg-gray-50 rounded-lg border-l-4 border-blue-600"
@@ -340,17 +422,20 @@ const MechanicDashboard: React.FC = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                    <AlertCircle size={32} className="mb-2 opacity-50" />
-                    <p>No hay citas próximas</p>
+                    <Calendar size={48} className="mb-4 opacity-30" />
+                    <p className="text-lg font-medium mb-2">No hay citas asignadas</p>
+                    <p className="text-sm text-gray-400 text-center max-w-md">
+                      Aún no tienes citas asignadas. Las citas aparecerán aquí cuando el administrador te las asigne.
+                    </p>
                   </div>
                 )}
-              </Card>
+              </div>
             </div>
           ) : view === 'appointments' ? (
             <div className="p-6">
-              <Card className="bg-white p-6 rounded-lg shadow">
+              <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Todas mis Citas</h3>
-                {displayAppointments.length > 0 ? (
+                {appointments.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-100 border-b">
@@ -364,7 +449,7 @@ const MechanicDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {displayAppointments.map((apt) => (
+                        {appointments.map((apt) => (
                           <tr key={apt.id} className="border-b hover:bg-gray-50">
                             <td className="px-4 py-3">{apt.clientName}</td>
                             <td className="px-4 py-3">{apt.vehicleInfo}</td>
@@ -390,41 +475,156 @@ const MechanicDashboard: React.FC = () => {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-gray-600">No hay citas</p>
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <Calendar size={48} className="mb-4 opacity-30" />
+                    <p className="text-lg font-medium mb-2">No hay citas registradas</p>
+                    <p className="text-sm text-gray-400 text-center max-w-md">
+                      Aún no tienes citas asignadas. Las citas aparecerán aquí cuando el administrador te las asigne.
+                    </p>
+                  </div>
                 )}
-              </Card>
+              </div>
             </div>
           ) : view === 'performance' ? (
             <div className="p-6">
-              <Card className="bg-white p-6 rounded-lg shadow">
+              <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Mi Desempeño</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <p className="text-gray-600 text-sm font-medium mb-2">Citas Completadas</p>
                     <p className="text-4xl font-bold text-green-600">
-                      {displayStats.completedAppointments}/{displayStats.totalAppointments}
+                      {stats.completedAppointments}/{stats.totalAppointments}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm font-medium mb-2">Calificación Promedio</p>
                     <div className="flex items-center gap-2">
-                      <p className="text-4xl font-bold text-yellow-600">{displayStats.averageRating.toFixed(1)}</p>
-                      <Star className="text-yellow-600 fill-yellow-600" size={32} />
+                      <p className="text-4xl font-bold text-yellow-600">
+                        {stats.averageRating > 0 ? stats.averageRating.toFixed(1) : 'N/A'}
+                      </p>
+                      {stats.averageRating > 0 && (
+                        <Star className="text-yellow-600 fill-yellow-600" size={32} />
+                      )}
                     </div>
                   </div>
                 </div>
-              </Card>
+              </div>
             </div>
           ) : view === 'settings' ? (
             <div className="p-6">
-              <Card className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">Configuración</h3>
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm text-gray-600">Esta sección está en desarrollo</p>
+              <div className="bg-white p-6 rounded-lg shadow max-w-2xl">
+                <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+                  <Settings className="text-blue-600" size={24} />
+                  Configuración de Perfil
+                </h3>
+                <form onSubmit={handleUpdateProfile} className="space-y-6">
+                  {/* Información del usuario */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        Nombre
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.name}
+                        onChange={(e) => setSettingsForm(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Tu nombre"
+                        required
+                      />
+                    </div>
+
+                    {mechanicInfo && (
+                      <div className="p-4 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Email:</span> {mechanicInfo.email}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">El email no se puede cambiar</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </Card>
+
+                  {/* Cambio de contraseña */}
+                  <div className="border-t pt-6 space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Cambiar Contraseña
+                    </h4>
+                    <p className="text-sm text-gray-600">Deja estos campos vacíos si no deseas cambiar la contraseña</p>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Contraseña Actual
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={settingsForm.currentPassword}
+                          onChange={(e) => setSettingsForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                          placeholder="Solo si vas a cambiar la contraseña"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Nueva Contraseña
+                      </label>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={settingsForm.newPassword}
+                        onChange={(e) => setSettingsForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Mínimo 6 caracteres"
+                        minLength={6}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Confirmar Nueva Contraseña
+                      </label>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={settingsForm.confirmPassword}
+                        onChange={(e) => setSettingsForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Confirma tu nueva contraseña"
+                        minLength={6}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 pt-4">
+                    <button
+                      type="submit"
+                      disabled={settingsLoading}
+                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {settingsLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-5 h-5" />
+                          Guardar Cambios
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           ) : null}
         </div>

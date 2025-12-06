@@ -125,6 +125,33 @@ async function initializeTables() {
       console.log('ℹ️ invoice_id column might already exist');
     }
 
+    // Crear tabla de calificaciones (ratings)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ratings (
+        id VARCHAR(50) PRIMARY KEY,
+        appointment_id VARCHAR(50) NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+        mechanic_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        comment TEXT,
+        client_name VARCHAR(255),
+        client_email VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(appointment_id)
+      )
+    `);
+
+    // Crear tabla de tokens de calificación (para links únicos)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rating_tokens (
+        id VARCHAR(50) PRIMARY KEY,
+        appointment_id VARCHAR(50) NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+        token VARCHAR(100) UNIQUE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     console.log('✅ Tablas de base de datos inicializadas correctamente');
   } catch (err) {
     console.error('❌ Error inicializando tablas:', err.message);

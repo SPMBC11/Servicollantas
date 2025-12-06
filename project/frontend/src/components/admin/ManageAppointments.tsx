@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Calendar, Clock, User, Car, Wrench, AlertCircle, CheckCircle, XCircle } from "lucide-react";
+import { Calendar, Clock, User, Car, Wrench, AlertCircle, CheckCircle, XCircle, UserCheck, Star, Link2, Copy, Check } from "lucide-react";
 import Card from "../ui/Card";
+import { useNotification } from "../../context/NotificationContext";
 
 interface Appointment {
   id: string;
@@ -20,52 +21,123 @@ interface Appointment {
   license_plate?: string;
   year?: number;
   invoice_id?: string;
+  service_provider_id?: string;
+  mechanic_name?: string;
+  mechanic_email?: string;
+  mechanic_phone?: string;
+}
+
+interface Mechanic {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
 }
 
 const ManageAppointments: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingStatus, setEditingStatus] = useState<'pending' | 'confirmed' | 'cancelled' | 'completed'>('pending');
+  const [editingMechanicId, setEditingMechanicId] = useState<string | null>(null);
+  const [ratingLinks, setRatingLinks] = useState<Record<string, string>>({});
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const { addNotification } = useNotification();
   const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
   useEffect(() => {
-    const fetchAppointments = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${backendUrl}/api/bookings`, {
+        
+        // Fetch appointments
+        const appointmentsRes = await fetch(`${backendUrl}/api/bookings`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
         
-        if (!res.ok) {
-          alert("Error al obtener citas");
+        if (!appointmentsRes.ok) {
+          addNotification("Error al obtener citas", "error");
           setLoading(false);
           return;
         }
         
-        const data = await res.json();
+        const appointmentsData = await appointmentsRes.json();
         // Map backend data to match our interface
-        const mappedData = data.map((apt: any) => ({
+        const mappedData = appointmentsData.map((apt: any) => ({
           ...apt,
           vehicle_info: apt.license_plate ? `${apt.make} ${apt.model} (${apt.license_plate})` : 'N/A'
         }));
         setAppointments(mappedData);
+        
+        // Fetch mechanics
+        const mechanicsRes = await fetch(`${backendUrl}/api/mechanics`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (mechanicsRes.ok) {
+          const mechanicsData = await mechanicsRes.json();
+          setMechanics(mechanicsData);
+        }
       } catch {
-        alert("Error de red al obtener citas");
+        addNotification("Error de red al obtener datos", "error");
       }
       setLoading(false);
     };
     
-    fetchAppointments();
+    fetchData();
   }, [backendUrl]);
+
+  const handleGenerateRatingLink = async (appointmentId: string) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      addNotification("No hay token de autenticación.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${backendUrl}/api/ratings/generate-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ appointmentId })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        addNotification(errorData.message || "Error al generar link de calificación", "error");
+        return;
+      }
+
+      const data = await res.json();
+      setRatingLinks(prev => ({ ...prev, [appointmentId]: data.url }));
+      addNotification("Link de calificación generado exitosamente", "success");
+    } catch (err) {
+      console.error(err);
+      addNotification("Error de red al generar link", "error");
+    }
+  };
+
+  const handleCopyLink = async (link: string, appointmentId: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedLink(appointmentId);
+      addNotification("Link copiado al portapapeles", "success");
+      setTimeout(() => setCopiedLink(null), 2000);
+    } catch (err) {
+      console.error('Error copying link:', err);
+      addNotification("Error al copiar el link", "error");
+    }
+  };
 
   const handleStatusChange = async (id: string, newStatus: typeof editingStatus) => {
     const token = localStorage.getItem('token');
     if (!token) {
-      alert("No hay token de autenticación.");
+      addNotification("No hay token de autenticación.", "error");
       return;
     }
     
@@ -80,24 +152,76 @@ const ManageAppointments: React.FC = () => {
       });
       
       if (!res.ok) {
-        alert("Error al actualizar el estado de la cita");
+        const errorData = await res.json();
+        addNotification(errorData.message || "Error al actualizar el estado de la cita", "error");
         return;
       }
       
       const updatedAppointment = await res.json();
-      setAppointments(appointments.map(a => a.id === id ? updatedAppointment : a));
+      setAppointments(appointments.map(a => a.id === id ? { ...a, ...updatedAppointment } : a));
       setEditingId(null);
-      alert("Estado actualizado exitosamente");
+      addNotification("Estado de la cita actualizado exitosamente", "success");
     } catch (err) {
       console.error(err);
-      alert("Error de red al actualizar la cita");
+      addNotification("Error de red al actualizar la cita", "error");
+    }
+  };
+
+  const handleMechanicAssign = async (id: string, mechanicId: string | null) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      addNotification("No hay token de autenticación.", "error");
+      return;
+    }
+    
+    try {
+      // First update the appointment with the mechanic
+      const res = await fetch(`${backendUrl}/api/bookings/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ service_provider_id: mechanicId || null })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        addNotification(errorData.message || "Error al asignar mecánico", "error");
+        return;
+      }
+      
+      // Refresh appointments to get updated data
+      const appointmentsRes = await fetch(`${backendUrl}/api/bookings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (appointmentsRes.ok) {
+        const data = await appointmentsRes.json();
+        const mappedData = data.map((apt: any) => ({
+          ...apt,
+          vehicle_info: apt.license_plate ? `${apt.make} ${apt.model} (${apt.license_plate})` : 'N/A'
+        }));
+        setAppointments(mappedData);
+      }
+      
+      setEditingMechanicId(null);
+      addNotification(
+        mechanicId ? "Mecánico asignado exitosamente" : "Mecánico removido exitosamente",
+        "success"
+      );
+    } catch (err) {
+      console.error(err);
+      addNotification("Error de red al asignar mecánico", "error");
     }
   };
 
   const generateInvoice = async (appointmentId: string) => {
     const token = localStorage.getItem('token');
     if (!token) {
-      alert("No hay token de autenticación.");
+      addNotification("No hay token de autenticación.", "error");
       return;
     }
     
@@ -111,15 +235,16 @@ const ManageAppointments: React.FC = () => {
       });
       
       if (!res.ok) {
-        alert("Error al generar la factura");
+        const errorData = await res.json();
+        addNotification(errorData.message || "Error al generar la factura", "error");
         return;
       }
       
       const invoice = await res.json();
-      alert(`Factura ${invoice.id} generada exitosamente`);
+      addNotification(`Factura ${invoice.id} generada exitosamente`, "success");
     } catch (err) {
       console.error(err);
-      alert("Error de red al generar la factura");
+      addNotification("Error de red al generar la factura", "error");
     }
   };
 
@@ -221,6 +346,7 @@ const ManageAppointments: React.FC = () => {
                     <th className="p-3">Cliente</th>
                     <th className="p-3">Vehículo</th>
                     <th className="p-3">Servicio</th>
+                    <th className="p-3">Mecánico</th>
                     <th className="p-3">Estado</th>
                     <th className="p-3">Acción</th>
                   </tr>
@@ -257,6 +383,38 @@ const ManageAppointments: React.FC = () => {
                           <Wrench className="w-4 h-4 text-gray-400" />
                           {appointment.service_name || 'N/A'}
                         </div>
+                      </td>
+                      <td className="p-3">
+                        {editingMechanicId === appointment.id ? (
+                          <select
+                            value={appointment.service_provider_id || ''}
+                            onChange={(e) => {
+                              const newMechanicId = e.target.value || null;
+                              handleMechanicAssign(appointment.id, newMechanicId);
+                            }}
+                            className="border rounded px-2 py-1 text-xs"
+                            onBlur={() => setEditingMechanicId(null)}
+                            autoFocus
+                          >
+                            <option value="">Sin asignar</option>
+                            {mechanics.map(mechanic => (
+                              <option key={mechanic.id} value={mechanic.id}>
+                                {mechanic.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div 
+                            className="flex items-center gap-2 cursor-pointer hover:text-blue-600"
+                            onClick={() => setEditingMechanicId(appointment.id)}
+                            title="Click para asignar/editar mecánico"
+                          >
+                            <UserCheck className="w-4 h-4 text-gray-400" />
+                            <span className={appointment.mechanic_name ? 'font-medium' : 'text-gray-400 italic'}>
+                              {appointment.mechanic_name || 'Sin asignar'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-3">
                         {editingId === appointment.id ? (
@@ -299,18 +457,51 @@ const ManageAppointments: React.FC = () => {
                               onClick={() => {
                                 setEditingId(appointment.id);
                                 setEditingStatus(appointment.status);
+                                setEditingMechanicId(appointment.service_provider_id || null);
                               }}
-                              className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                              className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center gap-1"
                             >
                               Editar
                             </button>
-                            {appointment.status === 'completed' && (
+                            {appointment.status === 'completed' && !appointment.invoice_id && (
                               <button
                                 onClick={() => generateInvoice(appointment.id)}
                                 className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
                               >
                                 Factura
                               </button>
+                            )}
+                            {appointment.status === 'completed' && appointment.service_provider_id && (
+                              <div className="flex gap-1">
+                                {ratingLinks[appointment.id] ? (
+                                  <button
+                                    onClick={() => handleCopyLink(ratingLinks[appointment.id], appointment.id)}
+                                    className="px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 flex items-center gap-1"
+                                    title="Copiar link de calificación"
+                                  >
+                                    {copiedLink === appointment.id ? (
+                                      <>
+                                        <Check className="w-3 h-3" />
+                                        Copiado
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3 h-3" />
+                                        Copiar Link
+                                      </>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleGenerateRatingLink(appointment.id)}
+                                    className="px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 flex items-center gap-1"
+                                    title="Generar link de calificación"
+                                  >
+                                    <Star className="w-3 h-3" />
+                                    Calificar
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -319,7 +510,7 @@ const ManageAppointments: React.FC = () => {
                   ))}
                   {appointments.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center text-gray-500 py-6">
+                      <td colSpan={8} className="text-center text-gray-500 py-6">
                         No hay citas registradas
                       </td>
                     </tr>
