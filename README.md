@@ -672,7 +672,7 @@ Proyecto empresarial para **ServiCollantas (Serviteca Viteca)**. El uso y redist
 
 ## 👥 Contribuidores
 
-- **Desarrollador Principal**: [Tu Nombre]
+- **Desarrollador Principal**: Santiago Pineda Mora
 - **Cliente**: ServiCollantas
 
 ## 📞 Soporte
