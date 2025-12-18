@@ -2,12 +2,16 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // Configuración de la base de datos PostgreSQL
+// ⚠️ IMPORTANTE: En producción, DB_PASSWORD DEBE estar en .env
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'servicollantas',
-  password: process.env.DB_PASSWORD || 'SPMBarcelona11',
-  port: process.env.DB_PORT || 5432,
+  // ⚠️ En producción, no usar valor por defecto para la contraseña
+  password: process.env.DB_PASSWORD || (process.env.NODE_ENV === 'production' ? (() => {
+    throw new Error('DB_PASSWORD must be set in production environment');
+  })() : 'SPMBarcelona11'),
+  port: parseInt(process.env.DB_PORT) || 5432,
 });
 
 // Función para probar la conexión

@@ -11,8 +11,41 @@ const { pool, testConnection, initializeTables, seedInitialData } = require("./d
 const config = require("./config");
 
 const app = express();
-app.use(cors());
+
+// Configuración de CORS
+// En producción, solo permitir el frontend específico
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
+
+// --- Health Check Endpoint (debe estar antes de otros endpoints) ---
+app.get("/api/health", async (req, res) => {
+  try {
+    // Verificar conexión a base de datos
+    const client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
+    
+    res.json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      database: "connected",
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (err) {
+    res.status(503).json({
+      status: "unhealthy",
+      timestamp: new Date().toISOString(),
+      database: "disconnected",
+      error: process.env.NODE_ENV === 'production' ? 'Database connection failed' : err.message
+    });
+  }
+});
 
 // --- helper: auth middleware ---
 function authMiddleware(requiredRoles = []) {
