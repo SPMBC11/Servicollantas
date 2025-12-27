@@ -16,9 +16,37 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.production.local
+*.env
 backend/.env
 frontend/.env
 frontend/.env.local
+cypress.env.json
+
+# Security & Credentials (CRITICAL - NEVER COMMIT)
+check-password.js
+verify-hash.js
+*credentials*
+*secret*
+*password*
+.private/
+*.key
+*.pem
+*rsa*
+
+# Cypress testing
+cypress/screenshots/
+cypress/videos/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
 
 # Editor directories and files
 .vscode/*

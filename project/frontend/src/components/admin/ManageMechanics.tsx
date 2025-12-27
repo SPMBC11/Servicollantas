@@ -231,21 +231,10 @@ const ManageMechanics: React.FC = () => {
 
   const handleSendCredentials = async (mechanic: Mechanic) => {
     try {
-      // Regenerar contraseña
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${backendUrl}/api/mechanics/regenerate-password`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ id: mechanic.id })
-      });
-      if (!res.ok) throw new Error('Error al regenerar contraseña');
-      const data = await res.json();
-      setLastPassword(data.password);
-      generateCredentialsMessage(mechanic, data.password);
-      addNotification("Contraseña regenerada exitosamente", "success");
+      const message = `Bienvenido al Portal de Mecánicos Servi-Collantas\n\nTus credenciales de acceso:\n\nEmail: ${mechanic.email}\n\n⚠️ IMPORTANTE:\nLa contraseña fue enviada cuando se creó tu cuenta. Si la olvidaste, puedes solicitar un reset de contraseña en la página de login.\n\nPanel de Mecánico: http://localhost:5173/mechanic/dashboard\n\nPor favor, cambia tu contraseña en tu próxima sesión.`;
+      setCredentialsMessage(message);
+      setShowCredentialsModal(true);
+      addNotification("Credenciales mostradas (sin regeneración)", "info");
     } catch (error) {
       addNotification('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'), "error");
     }

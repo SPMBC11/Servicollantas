@@ -1050,38 +1050,6 @@ app.put("/api/mechanics/:id", authMiddleware(['admin']), async (req, res) => {
   }
 });
 
-// --- Endpoint: Regenerate Mechanic Password ---
-app.post("/api/mechanics/regenerate-password", authMiddleware(['admin']), async (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) {
-      return res.status(400).json({ message: "ID de mecánico requerido" });
-    }
-
-    // Generate new password
-    const newPassword = Math.random().toString(36).substring(2, 10);
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    const result = await pool.query(
-      `UPDATE users SET password_hash = $1 WHERE id = $2 AND role = 'mechanic' RETURNING id, email`,
-      [hashedPassword, id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Mecánico no encontrado" });
-    }
-
-    res.json({ 
-      message: "Contraseña regenerada exitosamente",
-      password: newPassword,
-      email: result.rows[0].email
-    });
-  } catch (err) {
-    console.error("Error regenerando contraseña:", err);
-    res.status(500).json({ message: "Error al regenerar contraseña" });
-  }
-});
-
 // --- Endpoint: Get Mechanic Profile ---
 app.get("/api/mechanics/profile", authMiddleware(['mechanic']), async (req, res) => {
   try {
