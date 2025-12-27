@@ -86,6 +86,22 @@ async function initializeTables() {
 
     // Crear tabla de citas/reservas
     await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id VARCHAR(50) PRIMARY KEY,
+        client_name VARCHAR(255) NOT NULL,
+        client_email VARCHAR(255) NOT NULL,
+        vehicle_info VARCHAR(255) NOT NULL,
+        services JSONB NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Crear tabla de citas/reservas
+    await client.query(`
       CREATE TABLE IF NOT EXISTS appointments (
         id VARCHAR(50) PRIMARY KEY,
         client_id VARCHAR(50) NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
@@ -97,22 +113,6 @@ async function initializeTables() {
         notes TEXT,
         invoice_id VARCHAR(50) REFERENCES invoices(id) ON DELETE SET NULL,
         service_provider_id VARCHAR(50) REFERENCES users(id) ON DELETE SET NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Crear tabla de facturas
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS invoices (
-        id VARCHAR(50) PRIMARY KEY,
-        client_name VARCHAR(255) NOT NULL,
-        client_email VARCHAR(255) NOT NULL,
-        vehicle_info VARCHAR(255) NOT NULL,
-        services JSONB NOT NULL,
-        total DECIMAL(10,2) NOT NULL,
-        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -179,13 +179,15 @@ async function seedInitialData() {
     // Insertar usuarios iniciales
     const bcrypt = require('bcryptjs');
     const adminPassword = await bcrypt.hash('admin123', 10);
-    const mechanicPassword = await bcrypt.hash('mechanic123', 10);
+    const mechanicPassword = await bcrypt.hash('mecanico123', 10);
+    const clientPassword = await bcrypt.hash('cliente123', 10);
 
     await client.query(`
       INSERT INTO users (id, email, password_hash, role, name) VALUES
       ('u-admin', 'admin@servicollantas.com', $1, 'admin', 'Administrador'),
-      ('u-mech', 'mechanic@servicollantas.com', $2, 'mechanic', 'Mecánico')
-    `, [adminPassword, mechanicPassword]);
+      ('u-mech', 'mecanico@example.com', $2, 'mechanic', 'Mecánico'),
+      ('u-client', 'cliente@example.com', $3, 'client', 'Cliente')
+    `, [adminPassword, mechanicPassword, clientPassword]);
 
     // Insertar servicios iniciales
     await client.query(`

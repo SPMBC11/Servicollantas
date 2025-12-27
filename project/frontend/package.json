@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "cypress open",
+    "e2e:run": "cypress run",
+    "e2e:admin": "cypress run --spec 'cypress/e2e/admin.cy.js'",
+    "e2e:client": "cypress run --spec 'cypress/e2e/client.cy.js'",
+    "e2e:mechanic": "cypress run --spec 'cypress/e2e/mechanic.cy.js'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
@@ -25,6 +30,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
+    "cypress": "^13.6.2",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",

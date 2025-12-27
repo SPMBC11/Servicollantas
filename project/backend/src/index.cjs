@@ -2,6 +2,8 @@ console.log("Iniciando Servi-Collantas backend...");
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
@@ -11,6 +13,26 @@ const { pool, testConnection, initializeTables, seedInitialData } = require("./d
 const config = require("./config");
 
 const app = express();
+
+// Seguridad: Helmet para headers HTTP seguros
+app.use(helmet());
+
+// Rate limiting global
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // Límite de 100 solicitudes por IP
+  message: 'Demasiadas solicitudes de esta IP, intente más tarde',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// Rate limiting más estricto para login
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Demasiados intentos de login fallidos, intente más tarde'
+});
 
 // Configuración de CORS
 // En producción, solo permitir el frontend específico
@@ -22,6 +44,16 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 app.use(express.json());
+
+// Logging middleware para auditoria
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+  });
+  next();
+});
 
 // --- Health Check Endpoint (debe estar antes de otros endpoints) ---
 app.get("/api/health", async (req, res) => {
@@ -67,7 +99,7 @@ function authMiddleware(requiredRoles = []) {
 }
 
 // --- auth endpoints ---
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const client = await pool.connect();
