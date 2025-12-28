@@ -1,40 +1,30 @@
-/*const { Pool } = require('pg');
-require('dotenv').config();
-
-// Configuración de la base de datos PostgreSQL
-// ⚠️ IMPORTANTE: En producción, DB_PASSWORD DEBE estar en .env
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'servicollantas',
-  // ⚠️ En producción, no usar valor por defecto para la contraseña
-  password: process.env.DB_PASSWORD || (process.env.NODE_ENV === 'production' ? (() => {
-    throw new Error('DB_PASSWORD must be set in production environment');
-  })() : 'SPMBarcelona11'),
-  port: parseInt(process.env.DB_PORT) || 5432,
-});*/
-
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
-});
+let pool;
 
-// 🔍 prueba inmediata
-pool.query('SELECT 1')
-  .then(() => console.log('✅ PostgreSQL conectado en Render'))
-  .catch(err => console.error('❌ Error PostgreSQL:', err.message));
-
-module.exports = {
-  pool,
-  testConnection,
-  initializeTables,
-  seedInitialData
-};
+// 🟢 DETECCIÓN AUTOMÁTICA DE ENTORNO
+if (process.env.DATABASE_URL) {
+  // 🟢 PRODUCCIÓN (Render con SSL)
+  console.log('🔗 Conectando en PRODUCCIÓN con DATABASE_URL...');
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { 
+      rejectUnauthorized: false 
+    }
+  });
+} else {
+  // 🟡 LOCAL (sin SSL porque PostgreSQL local no lo necesita)
+  console.log('🔗 Conectando en DESARROLLO (sin SSL)...');
+  pool = new Pool({
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: process.env.DB_NAME || 'servicollantas',
+    password: process.env.DB_PASSWORD || 'SPMBarcelona11',
+    port: parseInt(process.env.DB_PORT) || 5432,
+    // 🔴 NO incluir SSL aquí - local no lo necesita
+  });
+}
 
 // Función para probar la conexión
 async function testConnection() {
@@ -108,22 +98,6 @@ async function initializeTables() {
 
     // Crear tabla de citas/reservas
     await client.query(`
-      CREATE TABLE IF NOT EXISTS invoices (
-        id VARCHAR(50) PRIMARY KEY,
-        client_name VARCHAR(255) NOT NULL,
-        client_email VARCHAR(255) NOT NULL,
-        vehicle_info VARCHAR(255) NOT NULL,
-        services JSONB NOT NULL,
-        total DECIMAL(10,2) NOT NULL,
-        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Crear tabla de citas/reservas
-    await client.query(`
       CREATE TABLE IF NOT EXISTS appointments (
         id VARCHAR(50) PRIMARY KEY,
         client_id VARCHAR(50) NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
@@ -140,18 +114,23 @@ async function initializeTables() {
       )
     `);
 
-    // Add invoice_id column to appointments if it doesn't exist
-    try {
-      await client.query(`
-        ALTER TABLE appointments 
-        ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(50) REFERENCES invoices(id) ON DELETE SET NULL
-      `);
-    } catch (err) {
-      // Column might already exist, ignore error
-      console.log('ℹ️ invoice_id column might already exist');
-    }
+    // Crear tabla de facturas
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id VARCHAR(50) PRIMARY KEY,
+        client_name VARCHAR(255) NOT NULL,
+        client_email VARCHAR(255) NOT NULL,
+        vehicle_info VARCHAR(255) NOT NULL,
+        services JSONB NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    // Crear tabla de calificaciones (ratings)
+    // Crear tabla de calificaciones
     await client.query(`
       CREATE TABLE IF NOT EXISTS ratings (
         id VARCHAR(50) PRIMARY KEY,
@@ -166,7 +145,7 @@ async function initializeTables() {
       )
     `);
 
-    // Crear tabla de tokens de calificación (para links únicos)
+    // Crear tabla de tokens de calificación
     await client.query(`
       CREATE TABLE IF NOT EXISTS rating_tokens (
         id VARCHAR(50) PRIMARY KEY,
