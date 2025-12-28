@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: servi-collantas-api
+    runtime: node
+    rootDir: project/backend
+    buildCommand: npm install --production
+    startCommand: node src/index.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DB_HOST
+        value: localhost
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASSWORD
+        value: postgres
+      - key: DB_NAME
+        value: servi_collantas_db
+      - key: DB_PORT
+        value: 5432
+      - key: JWT_SECRET
+        value: secreto_super_seguro_2024_cambiar_despues
+      - key: CORS_ORIGIN
+        value: https://servicollantas.vercel.app
