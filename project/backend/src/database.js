@@ -1,4 +1,4 @@
-const { Pool } = require('pg');
+/*const { Pool } = require('pg');
 require('dotenv').config();
 
 // Configuración de la base de datos PostgreSQL
@@ -12,7 +12,29 @@ const pool = new Pool({
     throw new Error('DB_PASSWORD must be set in production environment');
   })() : 'SPMBarcelona11'),
   port: parseInt(process.env.DB_PORT) || 5432,
+});*/
+
+const { Pool } = require('pg');
+require('dotenv').config();
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
+
+// 🔍 prueba inmediata
+pool.query('SELECT 1')
+  .then(() => console.log('✅ PostgreSQL conectado en Render'))
+  .catch(err => console.error('❌ Error PostgreSQL:', err.message));
+
+module.exports = {
+  pool,
+  testConnection,
+  initializeTables,
+  seedInitialData
+};
 
 // Función para probar la conexión
 async function testConnection() {
