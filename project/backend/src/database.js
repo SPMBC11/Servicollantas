@@ -96,6 +96,22 @@ async function initializeTables() {
       )
     `);
 
+    // Crear tabla de facturas
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id VARCHAR(50) PRIMARY KEY,
+        client_name VARCHAR(255) NOT NULL,
+        client_email VARCHAR(255) NOT NULL,
+        vehicle_info VARCHAR(255) NOT NULL,
+        services JSONB NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Crear tabla de citas/reservas
     await client.query(`
       CREATE TABLE IF NOT EXISTS appointments (
@@ -114,21 +130,7 @@ async function initializeTables() {
       )
     `);
 
-    // Crear tabla de facturas
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS invoices (
-        id VARCHAR(50) PRIMARY KEY,
-        client_name VARCHAR(255) NOT NULL,
-        client_email VARCHAR(255) NOT NULL,
-        vehicle_info VARCHAR(255) NOT NULL,
-        services JSONB NOT NULL,
-        total DECIMAL(10,2) NOT NULL,
-        date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    
 
     // Crear tabla de calificaciones
     await client.query(`
