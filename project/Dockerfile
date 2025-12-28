@@ -2,11 +2,14 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copiar archivos del backend
-COPY project/backend /app
+# Copiar package.json y package-lock.json primero
+COPY project/backend/package*.json ./
 
-# Instalar dependencias
-RUN npm install --production
+# Instalar todas las dependencias (incluye devDependencies para build)
+RUN npm install
+
+# Copiar el resto del código
+COPY project/backend .
 
 # Exponer puerto
 EXPOSE 4000
