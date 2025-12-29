@@ -1,5 +1,4 @@
 {
-    "roots": ["project/frontend"],
   "buildCommand": "cd project/frontend && npm install && npm run build",  "outputDirectory": "project/frontend/dist",
   "rewrites": [
     {
