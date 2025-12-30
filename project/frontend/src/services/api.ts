@@ -46,7 +46,7 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
 // Servicios de autenticación
 export const authService = {
   async login(email: string, password: string) {
-    return apiRequest('/api/login', {
+    return apiRequest('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
