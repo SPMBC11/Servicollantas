@@ -5,7 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('token');
-  
+
   const config: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
@@ -17,25 +17,29 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
 
   try {
     const response = await fetch(url, config);
-    
+
     if (!response.ok) {
       // Si el token es inválido o ha expirado, cerramos la sesión (excepto en la página de login).
       if (response.status === 401 && !url.includes('/login')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login'; // Redirige a la página de login
-        return Promise.reject(new Error('Sesión no autorizada o expirada. Por favor, inicie sesión de nuevo.'));
+        return Promise.reject(
+          new Error('Sesión no autorizada o expirada. Por favor, inicie sesión de nuevo.')
+        );
       }
-      
-      const errorData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
+
+      const errorData = await response
+        .json()
+        .catch(() => ({ message: `Error ${response.status}` }));
       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-    
-    // Handle responses with no content (e.g., DELETE success)
+
+    // Respuestas sin contenido (por ejemplo DELETE exitoso)
     if (response.status === 204) {
       return null;
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('API Request Error:', error);
@@ -51,20 +55,20 @@ export const authService = {
       body: JSON.stringify({ email, password }),
     });
   },
-  
+
   logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
   },
-  
+
   getCurrentUser() {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   },
-  
+
   isAuthenticated() {
     return !!localStorage.getItem('token');
-  }
+  },
 };
 
 // Servicios de clientes
@@ -72,26 +76,26 @@ export const clientService = {
   async getAll() {
     return apiRequest('/api/clients');
   },
-  
+
   async create(client: { name: string; phone: string; email: string }) {
     return apiRequest('/api/clients', {
       method: 'POST',
       body: JSON.stringify(client),
     });
   },
-  
+
   async update(id: string, client: { name: string; phone: string; email: string }) {
     return apiRequest(`/api/clients/${id}`, {
       method: 'PUT',
       body: JSON.stringify(client),
     });
   },
-  
+
   async delete(id: string) {
     return apiRequest(`/api/clients/${id}`, {
       method: 'DELETE',
     });
-  }
+  },
 };
 
 // Servicios de vehículos
@@ -99,30 +103,42 @@ export const vehicleService = {
   async getAll() {
     return apiRequest('/api/vehicles');
   },
-  
+
   async getByClient(clientId: string) {
     return apiRequest(`/api/vehicles/client/${clientId}`);
   },
-  
-  async create(vehicle: { make: string; model: string; year: number; license_plate: string; client_id: string }) {
+
+  async create(vehicle: {
+    make: string;
+    model: string;
+    year: number;
+    license_plate: string;
+    client_id: string;
+  }) {
     return apiRequest('/api/vehicles', {
       method: 'POST',
       body: JSON.stringify(vehicle),
     });
   },
-  
-  async update(id: string, vehicle: { make: string; model: string; year: number; license_plate: string; client_id: string }) {
+
+  async update(id: string, vehicle: {
+    make: string;
+    model: string;
+    year: number;
+    license_plate: string;
+    client_id: string;
+  }) {
     return apiRequest(`/api/vehicles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(vehicle),
     });
   },
-  
+
   async delete(id: string) {
     return apiRequest(`/api/vehicles/${id}`, {
       method: 'DELETE',
     });
-  }
+  },
 };
 
 // Servicios de servicios
@@ -130,26 +146,36 @@ export const serviceService = {
   async getAll() {
     return apiRequest('/api/services');
   },
-  
-  async create(service: { name: string; description: string; price: number; duration: number }) {
+
+  async create(service: {
+    name: string;
+    description: string;
+    price: number;
+    duration: number;
+  }) {
     return apiRequest('/api/services', {
       method: 'POST',
       body: JSON.stringify(service),
     });
   },
-  
-  async update(id: string, service: { name: string; description: string; price: number; duration: number }) {
+
+  async update(id: string, service: {
+    name: string;
+    description: string;
+    price: number;
+    duration: number;
+  }) {
     return apiRequest(`/api/services/${id}`, {
       method: 'PUT',
       body: JSON.stringify(service),
     });
   },
-  
+
   async delete(id: string) {
     return apiRequest(`/api/services/${id}`, {
       method: 'DELETE',
     });
-  }
+  },
 };
 
 // Servicios de citas/reservas
@@ -157,36 +183,36 @@ export const appointmentService = {
   async getAll() {
     return apiRequest('/api/bookings');
   },
-  
-  async create(appointment: { 
-    client_id: string; 
-    vehicle_id: string; 
-    service_id: string; 
-    date: string; 
-    time: string; 
-    notes?: string; 
+
+  async create(appointment: {
+    client_id: string;
+    vehicle_id: string;
+    service_id: string;
+    date: string;
+    time: string;
+    notes?: string;
   }) {
     return apiRequest('/api/bookings', {
       method: 'POST',
       body: JSON.stringify(appointment),
     });
   },
-  
-  async update(id: string, appointment: { 
-    status: string; 
-    notes?: string; 
+
+  async update(id: string, appointment: {
+    status: string;
+    notes?: string;
   }) {
     return apiRequest(`/api/bookings/${id}`, {
       method: 'PUT',
       body: JSON.stringify(appointment),
     });
   },
-  
+
   async delete(id: string) {
     return apiRequest(`/api/bookings/${id}`, {
       method: 'DELETE',
     });
-  }
+  },
 };
 
 // Servicios de facturas
@@ -194,11 +220,11 @@ export const invoiceService = {
   async getAll() {
     return apiRequest('/api/invoices');
   },
-  
+
   async getById(id: string) {
     return apiRequest(`/api/invoices/${id}`);
   },
-  
+
   async create(invoice: {
     client_name: string;
     client_email: string;
@@ -212,27 +238,27 @@ export const invoiceService = {
       body: JSON.stringify(invoice),
     });
   },
-  
+
   async delete(id: string) {
     return apiRequest(`/api/invoices/${id}`, {
       method: 'DELETE',
     });
   },
-  
+
   async downloadPDF(id: string) {
     const token = localStorage.getItem('token');
     const url = `${API_BASE_URL}/api/invoices/${id}/pdf`;
-    
+
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
-    
+
     if (!response.ok) {
       throw new Error('Error downloading PDF');
     }
-    
+
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -242,12 +268,12 @@ export const invoiceService = {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(downloadUrl);
-  }
+  },
 };
 
 // Servicio de salud
 export const healthService = {
   async check() {
     return apiRequest('/api/health');
-  }
+  },
 };
