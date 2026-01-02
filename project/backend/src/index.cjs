@@ -99,7 +99,7 @@ function authMiddleware(requiredRoles = []) {
 }
 
 // --- auth endpoints ---
-app.post("/api/login", loginLimiter, async (req, res) => {
+app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const client = await pool.connect();
