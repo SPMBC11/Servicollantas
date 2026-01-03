@@ -38,17 +38,73 @@
   "services": [
     {
       "id": "srv001",
-      "name": "Cambio de aceite",
+      "name": "Cambio de Aceite",
       "price": 50,
       "duration": 30,
-      "description": "Cambio de aceite y filtro"
+      "description": "Cambio de aceite de motor y filtro."
     },
     {
       "id": "srv002",
-      "name": "Alineación",
-      "price": 30,
+      "name": "Rotación y Balanceo de Llantas",
+      "price": 40,
       "duration": 45,
-      "description": "Alineación 4 ruedas"
+      "description": "Rotación de llantas y balanceo de las cuatro ruedas."
+    },
+    {
+      "id": "srv003",
+      "name": "Alineación",
+      "price": 60,
+      "duration": 60,
+      "description": "Alineación de dirección."
+    },
+    {
+      "id": "srv004",
+      "name": "Revisión de Frenos",
+      "price": 35,
+      "duration": 30,
+      "description": "Inspección y ajuste de sistema de frenos."
+    },
+    {
+      "id": "srv005",
+      "name": "Cambio de Llantas",
+      "price": 80,
+      "duration": 60,
+      "description": "Instalación profesional de llantas nuevas y usadas con garantía de calidad."
+    },
+    {
+      "id": "srv006",
+      "name": "Alineación y Balanceo",
+      "price": 45,
+      "duration": 60,
+      "description": "Servicio completo de alineación computarizada y balanceo de precisión."
+    },
+    {
+      "id": "srv007",
+      "name": "Reparación de Llantas",
+      "price": 15,
+      "duration": 30,
+      "description": "Reparamos pinchazos, cortes laterales y daños menores en llantas."
+    },
+    {
+      "id": "srv008",
+      "name": "Mantenimiento General",
+      "price": 60,
+      "duration": 90,
+      "description": "Revisión completa del sistema de suspensión y dirección."
+    },
+    {
+      "id": "srv009",
+      "name": "Servicio a Domicilio",
+      "price": 0,
+      "duration": 120,
+      "description": "Llevamos nuestros servicios hasta donde te encuentres."
+    },
+    {
+      "id": "srv010",
+      "name": "Inspección Vehicular",
+      "price": 120,
+      "duration": 90,
+      "description": "Revisión técnico-mecánica y de emisiones contaminantes."
     }
   ],
   "bookings": []

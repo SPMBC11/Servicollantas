@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // Import useEffect
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   RotateCcw,
@@ -10,7 +10,7 @@ import {
   ArrowRight,
   Clock
 } from 'lucide-react';
-import { mockServices } from '../../data/mockData';
+import { useBooking } from '../../context/BookingContext';
 
 interface ServicesProps {
   openBookingModal: (serviceId: string) => void;
@@ -30,8 +30,9 @@ const serviceIcons: { [key: string]: React.ReactElement } = {
 };
 
 const Services: React.FC<ServicesProps> = ({ openBookingModal }) => {
+  const { services, loading } = useBooking();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const totalServices = mockServices.length;
+  const totalServices = services.length;
 
   // Determine servicesPerPage based on screen width
   const getServicesPerPage = () => {
@@ -98,11 +99,20 @@ const Services: React.FC<ServicesProps> = ({ openBookingModal }) => {
           </button>
 
           <div className="w-full overflow-hidden">
-            <div
-              className="flex transition-transform duration-500 ease-in-out"
-              style={{ transform: `translateX(-${(currentIndex * (100 / servicesPerPage))}%)` }} // Adjusted translateX
-            >
-              {mockServices.map((service) => (
+            {loading ? (
+              <div className="flex justify-center items-center py-20">
+                <div className="text-gray-500">Cargando servicios...</div>
+              </div>
+            ) : services.length === 0 ? (
+              <div className="flex justify-center items-center py-20">
+                <div className="text-gray-500">No hay servicios disponibles</div>
+              </div>
+            ) : (
+              <div
+                className="flex transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${(currentIndex * (100 / servicesPerPage))}%)` }}
+              >
+                {services.map((service) => (
                 <div key={service.id} className="flex-shrink-0 w-full sm:w-1/2 lg:w-1/3 p-4"> {/* Responsive width */}
                   <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group h-full">
                     <div className="p-8">
@@ -131,9 +141,10 @@ const Services: React.FC<ServicesProps> = ({ openBookingModal }) => {
                       </button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button

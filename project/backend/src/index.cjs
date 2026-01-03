@@ -435,7 +435,8 @@ app.delete("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (re
 });
 
 // --- appointments/bookings endpoints ---
-app.post("/api/bookings", authMiddleware(), async (req, res) => {
+// Allow public access for bookings (anonymous clients)
+app.post("/api/bookings", async (req, res) => {
   try {
     const { client_id, vehicle_id, service_id, date, time, notes, client_name, client_email, client_phone, service_provider_id } = req.body;
     const appointmentId = uuidv4();
@@ -456,9 +457,23 @@ app.post("/api/bookings", authMiddleware(), async (req, res) => {
       
       // If client doesn't exist, create one with provided data or from token
       if (clientCheck.rows.length === 0) {
-        const finalName = client_name || req.user.name || 'Cliente';
-        const finalEmail = client_email || req.user.email || '';
-        const finalPhone = client_phone || req.user.phone || '';
+        // Try to get user info from token if available (optional auth)
+        let userFromToken = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader) {
+          try {
+            const token = authHeader.replace("Bearer ", "");
+            if (token && token !== 'null') {
+              userFromToken = jwt.verify(token, config.server.jwtSecret);
+            }
+          } catch (e) {
+            // Ignore invalid token for public endpoint
+          }
+        }
+
+        const finalName = client_name || (userFromToken && userFromToken.name) || 'Cliente';
+        const finalEmail = client_email || (userFromToken && userFromToken.email) || '';
+        const finalPhone = client_phone || (userFromToken && userFromToken.phone) || '';
         
         await dbClient.query(
           'INSERT INTO clients (id, name, email, phone) VALUES ($1, $2, $3, $4)',

@@ -23,6 +23,8 @@ export interface Client {
   rating?: number;
 }
 
+export type AppointmentStatus = "pendiente" | "pagada" | "cancelada";
+
 export interface Appointment {
   id: string;
   clientId: string;
@@ -30,7 +32,7 @@ export interface Appointment {
   serviceId: string;
   date: string;
   time: string;
-  status: "pendiente" | "pagada";
+  status: AppointmentStatus;
   notes?: string;
 }
 

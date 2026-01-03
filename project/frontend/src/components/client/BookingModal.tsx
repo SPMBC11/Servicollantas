@@ -66,30 +66,35 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
     services, 
     vehicles, 
     loading,
+    loadAppointments,
   } = useBooking();
 
-  // Load available mechanics
+  // Load appointments and mechanics when modal opens
   useEffect(() => {
-    const loadMechanics = async () => {
-      setLoadingMechanics(true);
-      try {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
-        const res = await fetch(`${backendUrl}/api/mechanics/available`);
-        if (res.ok) {
-          const data = await res.json();
-          setMechanics(data);
+    const loadData = async () => {
+      if (isOpen) {
+        // Load appointments to check availability
+        await loadAppointments();
+        
+        // Load available mechanics
+        setLoadingMechanics(true);
+        try {
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+          const res = await fetch(`${backendUrl}/api/mechanics/available`);
+          if (res.ok) {
+            const data = await res.json();
+            setMechanics(data);
+          }
+        } catch (error) {
+          console.error('Error loading mechanics:', error);
+        } finally {
+          setLoadingMechanics(false);
         }
-      } catch (error) {
-        console.error('Error loading mechanics:', error);
-      } finally {
-        setLoadingMechanics(false);
       }
     };
     
-    if (isOpen) {
-      loadMechanics();
-    }
-  }, [isOpen]);
+    loadData();
+  }, [isOpen, loadAppointments]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -200,12 +205,18 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       // Call appointmentService directly with client data
       const token = localStorage.getItem('token');
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${backendUrl}/api/bookings`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({
           client_id: clientId,
           vehicle_id: vehicleId,
@@ -237,9 +248,12 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
 
   // Calculate available time slots, disabling already booked ones
   const getAvailableTimeSlots = (date: string) => {
+    if (!date) return mockTimeSlots;
+    
     const bookedTimes = appointments
-      .filter(app => app.date === date)
+      .filter(app => app.date === date && app.status !== 'cancelada')
       .map(app => app.time);
+    
     return mockTimeSlots.map(slot => ({
       ...slot,
       available: !bookedTimes.includes(slot.time)
@@ -281,21 +295,27 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
               {step === 1 && (
                 <div>
                   <h4 className="text-lg font-medium mb-4">Selecciona el servicio</h4>
-                  <div className="grid grid-cols-2 gap-6">
-                    {services.map(service => (
-                      <div
-                        key={service.id}
-                        onClick={() => {
-                          setBooking(prev => ({ ...prev, serviceId: service.id }));
-                          setStep(2);
-                        }}
-                        className={`cursor-pointer border-2 rounded-xl p-4 transition-all hover:shadow-lg ${booking.serviceId === service.id ? 'border-blue-500' : 'border-gray-200 hover:border-blue-300'}`}
-                      >
-                        <p className="font-medium">{service.name}</p>
-                        <p className="text-gray-500">${(typeof service.price === 'string' ? parseFloat(service.price) : service.price).toFixed(2)}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {services.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No hay servicios disponibles. Por favor, intenta más tarde.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-6">
+                      {services.map(service => (
+                        <div
+                          key={service.id}
+                          onClick={() => {
+                            setBooking(prev => ({ ...prev, serviceId: service.id }));
+                            setStep(2);
+                          }}
+                          className={`cursor-pointer border-2 rounded-xl p-4 transition-all hover:shadow-lg ${booking.serviceId === service.id ? 'border-blue-500' : 'border-gray-200 hover:border-blue-300'}`}
+                        >
+                          <p className="font-medium">{service.name}</p>
+                          <p className="text-gray-500">${(typeof service.price === 'string' ? parseFloat(service.price) : service.price).toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {/* Step 2 - Vehicle Selection (with inline entry) */}
@@ -427,22 +447,41 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
                   <h4 className="text-lg font-medium mb-4">Selecciona fecha y hora</h4>
                   <input
                     type="date"
-                    className="border p-2 rounded w-full mb-6"
+                    className="border p-2 rounded w-full mb-4"
                     value={booking.date || ''}
+                    min={new Date().toISOString().split('T')[0]}
                     onChange={(e) => setBooking(prev => ({ ...prev, date: e.target.value }))}
                   />
-                  <div className="grid grid-cols-3 gap-3">
-                    {availableSlots.map(slot => (
-                      <button
-                        key={slot.time}
-                        onClick={() => setBooking(prev => ({ ...prev, time: slot.time }))}
-                        disabled={!slot.available}
-                        className={`px-3 py-2 border-2 rounded-lg transition-all ${booking.time === slot.time ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 hover:border-blue-300'} ${!slot.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        {slot.time}
-                      </button>
-                    ))}
-                  </div>
+                  {booking.date && (
+                    <>
+                      {availableSlots.filter(s => !s.available).length > 0 && (
+                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                          ⚠️ {availableSlots.filter(s => !s.available).length} horario(s) ya ocupado(s) en esta fecha
+                        </div>
+                      )}
+                      <div className="grid grid-cols-3 gap-3">
+                        {availableSlots.map(slot => (
+                          <button
+                            key={slot.time}
+                            onClick={() => slot.available && setBooking(prev => ({ ...prev, time: slot.time }))}
+                            disabled={!slot.available}
+                            className={`px-3 py-2 border-2 rounded-lg transition-all ${
+                              booking.time === slot.time 
+                                ? 'bg-blue-600 text-white border-blue-600' 
+                                : slot.available 
+                                  ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50' 
+                                  : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed line-through'
+                            }`}
+                          >
+                            {slot.time}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {!booking.date && (
+                    <p className="text-gray-500 text-sm mt-2">Selecciona una fecha para ver los horarios disponibles</p>
+                  )}
                 </div>
               )}
 
@@ -588,4 +627,3 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
 };
 
 export default BookingModal;
-
