@@ -146,7 +146,7 @@ app.get("/api/services", async (req, res) => {
   let client;
   try {
     console.log("🔍 Solicitando lista de servicios...");
-    const client = await pool.connect();
+    let client = await pool.connect();
     client = await pool.connect();
     const result = await client.query('SELECT * FROM services ORDER BY name');
     client.release();
@@ -325,7 +325,7 @@ app.delete("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req
 app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   let client;
   try {
-    const client = await pool.connect();
+    let client = await pool.connect();
     client = await pool.connect();
     const result = await client.query(`
       SELECT v.*, c.name as client_name, c.email as client_email 
