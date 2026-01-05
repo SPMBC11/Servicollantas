@@ -94,7 +94,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
     };
     
     loadData();
-  }, [isOpen, loadAppointments]);
+  }, [isOpen]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
