@@ -189,6 +189,7 @@ async function seedInitialData() {
      ('u-mech', 'mecanico@example.com', $2, 'mechanic', 'Mecánico'),
      ('u-client', 'cliente@example.com', $3, 'client', 'Cliente')
      ON CONFLICT (email) DO NOTHING
+`, [adminPassword, mechanicPassword, clientPassword]);
     } else {
       console.log(`📊 Usuarios ya existen (${userCount.rows[0].count}), saltando creación de usuarios...`);
     }
@@ -209,8 +210,8 @@ async function seedInitialData() {
         ('srv008', 'Mantenimiento General', 'Revisión completa del sistema de suspensión', 60.00, 90),
         ('srv009', 'Servicio a Domicilio', 'Llevamos nuestros servicios hasta donde te encuentres', 0.00, 120),
         ('srv010', 'Inspección Vehicular', 'Revisión técnico-mecánica y de emisiones', 120.00, 90)
-      `)ON CONFLICT (id) DO NOTHING
-     ;
+ON CONFLICT (id) DO NOTHING
+`);     ;
       console.log('✅ Servicios iniciales insertados correctamente');
     } else {
       console.log(`📊 Servicios ya existen (${serviceCount.rows[0].count}), saltando creación de servicios...`);
