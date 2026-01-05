@@ -14,34 +14,38 @@ const config = require("./config");
 
 const app = express();
 
+// Configuración de CORS (Debe ir ANTES de cualquier otra configuración)
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Type', 'Authorization']
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Habilitar pre-flight para todas las rutas
+
 // Seguridad: Helmet para headers HTTP seguros
 app.use(helmet());
 
 // Rate limiting global
+// En desarrollo, permitir más solicitudes
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // Límite de 100 solicitudes por IP
+  max: process.env.NODE_ENV === 'production' ? 100 : 10000, // Aumentado a 10000 para evitar bloqueos en desarrollo
   message: 'Demasiadas solicitudes de esta IP, intente más tarde',
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use(limiter);
+// app.use(limiter);
 
 // Rate limiting más estricto para login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === 'production' ? 5 : 100,
   message: 'Demasiados intentos de login fallidos, intente más tarde'
 });
-
-// Configuración de CORS
-// En producción, solo permitir el frontend específico
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
 
 app.use(express.json());
 
@@ -139,20 +143,33 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
 
 // --- services endpoints ---
 app.get("/api/services", async (req, res) => {
+  let client;
   try {
+    console.log("🔍 Solicitando lista de servicios...");
     const client = await pool.connect();
+    client = await pool.connect();
     const result = await client.query('SELECT * FROM services ORDER BY name');
     client.release();
+    console.log(`✅ Servicios encontrados: ${result.rows.length}`);
     res.json(result.rows);
   } catch (err) {
     console.error("Error obteniendo servicios:", err);
     res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (client) client.release();
   }
 });
 
 app.post("/api/services", authMiddleware(["admin"]), async (req, res) => {
   try {
+    console.log("📝 Intentando crear servicio:", req.body);
     const { name, description, price, duration } = req.body;
+    
+    if (!name || !price || !duration) {
+      console.log("❌ Faltan campos requeridos para crear servicio");
+      return res.status(400).json({ message: "Nombre, precio y duración son requeridos" });
+    }
+
     const client = await pool.connect();
     
     const result = await client.query(
@@ -161,6 +178,7 @@ app.post("/api/services", authMiddleware(["admin"]), async (req, res) => {
     );
     
     client.release();
+    console.log("✅ Servicio creado exitosamente:", result.rows[0]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Error creando servicio:", err);
@@ -226,10 +244,12 @@ app.get("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res) 
 });
 
 app.post("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  let client;
   try {
     const { name, phone, email } = req.body;
     const clientId = uuidv4();
     const client = await pool.connect();
+    client = await pool.connect();
     
     const result = await client.query(
       'INSERT INTO clients (id, name, phone, email) VALUES ($1, $2, $3, $4) RETURNING *',
@@ -245,6 +265,8 @@ app.post("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res)
     } else {
       res.status(500).json({ message: "Internal server error" });
     }
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -301,8 +323,10 @@ app.delete("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req
 
 // --- vehicles endpoints ---
 app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res) => {
+  let client;
   try {
     const client = await pool.connect();
+    client = await pool.connect();
     const result = await client.query(`
       SELECT v.*, c.name as client_name, c.email as client_email 
       FROM vehicles v 
@@ -314,6 +338,8 @@ app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res)
   } catch (err) {
     console.error("Error obteniendo vehículos:", err);
     res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -509,6 +535,18 @@ app.post("/api/bookings", async (req, res) => {
         return res.status(400).json({ message: "Invalid client, vehicle, or service ID" });
       }
       
+      // Check for unique constraint violations (e.g. client email)
+      if (queryErr.code === '23505') {
+        console.error("Unique constraint error:", queryErr.detail);
+        return res.status(400).json({ message: "Client email or data already exists" });
+      }
+      
+      // Check for invalid UUID or data types
+      if (queryErr.code === '22P02') {
+        console.error("Invalid data format:", queryErr.message);
+        return res.status(400).json({ message: "Invalid ID or data format" });
+      }
+      
       throw queryErr;
     }
   } catch (err) {
@@ -519,6 +557,7 @@ app.post("/api/bookings", async (req, res) => {
 
 app.get("/api/bookings", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   try {
+    console.log(`🔍 Admin/Mecánico (${req.user.email}) solicitando citas...`);
     const client = await pool.connect();
     const result = await client.query(`
       SELECT a.*, c.name as client_name, c.email as client_email, c.phone as client_phone,
@@ -533,6 +572,7 @@ app.get("/api/bookings", authMiddleware(["admin", "mechanic"]), async (req, res)
       ORDER BY a.date DESC, a.time DESC
     `);
     client.release();
+    console.log(`✅ Citas encontradas en DB: ${result.rows.length}`);
     res.json(result.rows);
   } catch (err) {
     console.error("Error obteniendo citas:", err);

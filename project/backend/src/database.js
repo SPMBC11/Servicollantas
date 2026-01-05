@@ -172,45 +172,52 @@ async function initializeTables() {
 async function seedInitialData() {
   const client = await pool.connect();
   try {
-    // Verificar si ya existen datos
+    console.log('🌱 Verificando datos iniciales...');
+
+    // 1. Verificar e insertar USUARIOS
     const userCount = await client.query('SELECT COUNT(*) FROM users');
-    if (userCount.rows[0].count > 0) {
-      console.log('📊 Datos iniciales ya existen, omitiendo...');
-      return;
+    if (parseInt(userCount.rows[0].count) === 0) {
+      console.log('🌱 Sembrando usuarios iniciales...');
+      const bcrypt = require('bcryptjs');
+      const adminPassword = await bcrypt.hash('admin123', 10);
+      const mechanicPassword = await bcrypt.hash('mecanico123', 10);
+      const clientPassword = await bcrypt.hash('cliente123', 10);
+
+      await client.query(`
+        INSERT INTO users (id, email, password_hash, role, name) VALUES
+        ('u-admin', 'admin@servicollantas.com', $1, 'admin', 'Administrador'),
+        ('u-mech', 'mecanico@example.com', $2, 'mechanic', 'Mecánico'),
+        ('u-client', 'cliente@example.com', $3, 'client', 'Cliente')
+      `, [adminPassword, mechanicPassword, clientPassword]);
+    } else {
+      console.log(`📊 Usuarios ya existen (${userCount.rows[0].count}), saltando creación de usuarios...`);
     }
 
-    // Insertar usuarios iniciales
-    const bcrypt = require('bcryptjs');
-    const adminPassword = await bcrypt.hash('admin123', 10);
-    const mechanicPassword = await bcrypt.hash('mecanico123', 10);
-    const clientPassword = await bcrypt.hash('cliente123', 10);
-
-    await client.query(`
-      INSERT INTO users (id, email, password_hash, role, name) VALUES
-      ('u-admin', 'admin@servicollantas.com', $1, 'admin', 'Administrador'),
-      ('u-mech', 'mecanico@example.com', $2, 'mechanic', 'Mecánico'),
-      ('u-client', 'cliente@example.com', $3, 'client', 'Cliente')
-    `, [adminPassword, mechanicPassword, clientPassword]);
-
-    // Insertar servicios iniciales
-    await client.query(`
-      INSERT INTO services (id, name, description, price, duration) VALUES
-      ('srv001', 'Cambio de Aceite', 'Cambio de aceite de motor y filtro', 50.00, 30),
-      ('srv002', 'Rotación y Balanceo de Llantas', 'Rotación de llantas y balanceo de las cuatro ruedas', 40.00, 45),
-      ('srv003', 'Alineación', 'Alineación de dirección', 60.00, 60),
-      ('srv004', 'Revisión de Frenos', 'Inspección y ajuste de sistema de frenos', 35.00, 30),
-      ('srv005', 'Cambio de Llantas', 'Instalación profesional de llantas nuevas y usadas', 80.00, 60),
-      ('srv006', 'Alineación y Balanceo', 'Servicio completo de alineación computarizada', 45.00, 60),
-      ('srv007', 'Reparación de Llantas', 'Reparamos pinchazos, cortes laterales y daños menores', 15.00, 30),
-      ('srv008', 'Mantenimiento General', 'Revisión completa del sistema de suspensión', 60.00, 90),
-      ('srv009', 'Servicio a Domicilio', 'Llevamos nuestros servicios hasta donde te encuentres', 0.00, 120),
-      ('srv010', 'Inspección Vehicular', 'Revisión técnico-mecánica y de emisiones', 120.00, 90)
-    `);
-
-    console.log('✅ Datos iniciales insertados correctamente');
+    // 2. Verificar e insertar SERVICIOS
+    const serviceCount = await client.query('SELECT COUNT(*) FROM services');
+    if (parseInt(serviceCount.rows[0].count) === 0) {
+      console.log('🌱 Sembrando servicios iniciales...');
+      await client.query(`
+        INSERT INTO services (id, name, description, price, duration) VALUES
+        ('srv001', 'Cambio de Aceite', 'Cambio de aceite de motor y filtro', 50.00, 30),
+        ('srv002', 'Rotación y Balanceo de Llantas', 'Rotación de llantas y balanceo de las cuatro ruedas', 40.00, 45),
+        ('srv003', 'Alineación', 'Alineación de dirección', 60.00, 60),
+        ('srv004', 'Revisión de Frenos', 'Inspección y ajuste de sistema de frenos', 35.00, 30),
+        ('srv005', 'Cambio de Llantas', 'Instalación profesional de llantas nuevas y usadas', 80.00, 60),
+        ('srv006', 'Alineación y Balanceo', 'Servicio completo de alineación computarizada', 45.00, 60),
+        ('srv007', 'Reparación de Llantas', 'Reparamos pinchazos, cortes laterales y daños menores', 15.00, 30),
+        ('srv008', 'Mantenimiento General', 'Revisión completa del sistema de suspensión', 60.00, 90),
+        ('srv009', 'Servicio a Domicilio', 'Llevamos nuestros servicios hasta donde te encuentres', 0.00, 120),
+        ('srv010', 'Inspección Vehicular', 'Revisión técnico-mecánica y de emisiones', 120.00, 90)
+      `);
+      console.log('✅ Servicios iniciales insertados correctamente');
+    } else {
+      console.log(`📊 Servicios ya existen (${serviceCount.rows[0].count}), saltando creación de servicios...`);
+    }
+    
   } catch (err) {
     console.error('❌ Error insertando datos iniciales:', err.message);
-    throw err;
+    // No lanzamos error para que el servidor inicie aunque falle el seed
   } finally {
     client.release();
   }

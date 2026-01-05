@@ -121,7 +121,7 @@ const Services: React.FC<ServicesProps> = ({ openBookingModal }) => {
                           {serviceIcons[service.id]}
                         </div>
                         <div className="text-right">
-                          <div className="text-2xl font-bold text-red-600">${service.price.toFixed(2)}</div>
+                          <div className="text-2xl font-bold text-red-600">${(typeof service.price === 'string' ? parseFloat(service.price) : service.price).toFixed(2)}</div>
                           <div className="text-sm text-gray-500 flex items-center">
                             <Clock size={14} className="mr-1" />
                             {service.duration} min

@@ -5,7 +5,9 @@ const appointmentService = require('../services/appointmentService');
 const httpStatus = require('../constants/httpStatus');
 
 const getAll = asyncHandler(async (req, res) => {
+  console.log("🔍 Admin/Mecánico solicitando todas las citas...");
   const appointments = await appointmentService.getAll();
+  console.log(`✅ Citas encontradas en DB: ${appointments ? appointments.length : 0}`);
   return successResponse(res, appointments);
 });
 
@@ -42,4 +44,3 @@ module.exports = {
   update,
   delete: deleteAppointment
 };
-
