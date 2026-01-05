@@ -58,7 +58,17 @@ export const BookingProvider: React.FC<BookingProviderProps> = ({ children }) =>
       const userRole = user ? JSON.parse(user).role : null;
 
       // Cargar servicios (disponible para todos)
-      const servicesData = await serviceService.getAll();
+let servicesData: Service[] = [];
+    try {
+      servicesData = await serviceService.getAll();
+      if (!Array.isArray(servicesData)) {
+        console.warn('serviceService.getAll() no retornó un array:', servicesData);
+        servicesData = [];
+      }
+    } catch (servErr) {
+      console.error('Error cargando servicios:', servErr);
+      servicesData = [];
+    }
       let vehiclesData: Vehicle[] = [];
       let clientsData: Client[] = [];
       
