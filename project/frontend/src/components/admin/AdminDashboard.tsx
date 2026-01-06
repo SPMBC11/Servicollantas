@@ -51,7 +51,6 @@ import { authService } from "../../services/api";
  * Panel de administración para Servi Collantas
  */
 export default function AdminDashboard() {
-  console.log("AdminDashboard component is rendering");
   const [view, setView] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -62,14 +61,11 @@ export default function AdminDashboard() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [mechanics, setMechanics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
-    console.log("useEffect running, backendUrl:", backendUrl);
     const fetchAll = async () => {
-      setLoading(true);
       try {
-        console.log("Fetching data from backend...");
         const token = localStorage.getItem("token");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         
@@ -80,7 +76,6 @@ export default function AdminDashboard() {
           fetch(`${backendUrl}/api/invoices`, { headers }),
           fetch(`${backendUrl}/api/mechanics`, { headers }),
         ]);
-        console.log("Responses:", { clientsRes, vehiclesRes, servicesRes, invoicesRes, mechanicsRes });
         const clientsData = clientsRes.ok ? await clientsRes.json() : [];
         const vehiclesData = vehiclesRes.ok ? await vehiclesRes.json() : [];
         const servicesData = servicesRes.ok ? await servicesRes.json() : [];
@@ -91,19 +86,21 @@ export default function AdminDashboard() {
         setServices(servicesData);
         setInvoices(invoicesData);
         setMechanics(mechanicsData);
-        console.log("Data set:", { clientsData, vehiclesData, servicesData, invoicesData, mechanicsData });
       } catch (error) {
         console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
+    
+    setLoading(true);
     fetchAll();
     
     // Actualizar datos cada 30 segundos
     const interval = setInterval(fetchAll, 30000);
     
     return () => clearInterval(interval);
-  }, [backendUrl]);
+  }, []);
 
   const totalClients = clients.length;
   const totalVehicles = vehicles.length;
@@ -143,9 +140,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <div className="bg-red-500 text-white p-4 text-center fixed top-0 left-0 right-0 z-50">
-        DEBUG: AdminDashboard is rendering - View: {view}
-      </div>
       {/* --- Sidebar --- */}
       <aside
         className={`w-72 bg-red-600 text-white flex flex-col shadow-2xl lg:relative fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out ${
@@ -244,13 +238,6 @@ export default function AdminDashboard() {
           {/* --- Dashboard --- */}
           {view === "dashboard" && (
             <div className="space-y-6">
-              <div className="bg-blue-500 text-white p-4 rounded">
-                <h2>Dashboard Debug Info</h2>
-                <p>Loading: {loading ? 'Yes' : 'No'}</p>
-                <p>Clients: {clients.length}</p>
-                <p>Vehicles: {vehicles.length}</p>
-                <p>Services: {services.length}</p>
-              </div>
               {loading ? (
                 <div className="flex justify-center items-center py-12">
                   <span className="text-red-600 font-semibold">Cargando datos...</span>

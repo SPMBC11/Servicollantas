@@ -44,7 +44,7 @@ const ManageAppointments: React.FC = () => {
   const [ratingLinks, setRatingLinks] = useState<Record<string, string>>({});
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const { addNotification } = useNotification();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchData = async () => {
@@ -91,7 +91,7 @@ const ManageAppointments: React.FC = () => {
     };
     
     fetchData();
-  }, [backendUrl]);
+  }, []);
 
   const handleGenerateRatingLink = async (appointmentId: string) => {
     const token = localStorage.getItem('token');

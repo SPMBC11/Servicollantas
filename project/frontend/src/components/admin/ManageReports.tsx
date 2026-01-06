@@ -25,7 +25,7 @@ const ManageReports: React.FC = () => {
   const [filterType, setFilterType] = useState<'day' | 'month' | 'year'>('month');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   // Establecer fechas por defecto (mes actual)
   useEffect(() => {

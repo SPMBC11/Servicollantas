@@ -22,7 +22,7 @@ const ManageServices: React.FC = () => {
     price: 0,
     duration: 30
   });
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchServices = async () => {
@@ -53,7 +53,7 @@ const ManageServices: React.FC = () => {
       setLoading(false);
     };
     fetchServices();
-  }, [backendUrl]);
+  }, []);
 
   const handleAdd = () => {
     setEditingService(null);

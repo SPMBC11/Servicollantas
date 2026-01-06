@@ -21,7 +21,7 @@ const ManageClients: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({ name: "", phone: "", email: "" });
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -52,7 +52,7 @@ const ManageClients: React.FC = () => {
       setLoading(false);
     };
     fetchClients();
-  }, [backendUrl]);
+  }, []);
 
   // Calcular estadísticas
   const totalClients = clients.length;

@@ -17,7 +17,7 @@ interface Vehicle {
 const ManageVehicles: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -42,7 +42,7 @@ const ManageVehicles: React.FC = () => {
       setLoading(false);
     };
     fetchVehicles();
-  }, [backendUrl]);
+  }, []);
 
   const handleDelete = async (id: string | number) => {
     if (!confirm('¿Estás seguro de que deseas eliminar este vehículo?')) {

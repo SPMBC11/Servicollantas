@@ -31,6 +31,7 @@ const serviceIcons: { [key: string]: React.ReactElement } = {
 
 const Services: React.FC<ServicesProps> = ({ openBookingModal }) => {
   const { services, loading } = useBooking();
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const totalServices = services.length;
 

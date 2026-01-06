@@ -74,19 +74,28 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
     const loadData = async () => {
       if (isOpen) {
         // Load appointments to check availability
-        await loadAppointments();
+        try {
+          await loadAppointments();
+        } catch (error) {
+          console.error('Error refreshing appointments:', error);
+        }
         
         // Load available mechanics
         setLoadingMechanics(true);
         try {
-          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
-          const res = await fetch(`${backendUrl}/api/mechanics/available`);
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:4000';
+          const url = `${backendUrl}/api/mechanics/available`;
+          
+          const res = await fetch(url);
           if (res.ok) {
             const data = await res.json();
             setMechanics(data);
+          } else {
+            console.warn(`Backend status ${res.status} fetching mechanics from ${url}`);
           }
         } catch (error) {
-          console.error('Error loading mechanics:', error);
+          console.error('Error de conexión (posible CORS o Backend caído):', error);
+          setMechanics([]); // Fallback a lista vacía para no romper la UI
         } finally {
           setLoadingMechanics(false);
         }
@@ -205,6 +214,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       // Call appointmentService directly with client data
       const token = localStorage.getItem('token');
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+      const bookingUrl = `${backendUrl}/api/bookings`;
       
       const headers: HeadersInit = {
         'Content-Type': 'application/json'
@@ -214,7 +224,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch(`${backendUrl}/api/bookings`, {
+      const res = await fetch(bookingUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -232,13 +242,14 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
       });
       
       if (!res.ok) {
-        throw new Error('Error al crear la cita');
+        const errorData = await res.text();
+        throw new Error(`Error del servidor (${res.status}): ${errorData}`);
       }
 
       addNotification('¡Cita reservada exitosamente!', 'success');
     } catch (err) {
-      console.error('Error reservando cita:', err);
-      addNotification('Error al reservar la cita. Intenta de nuevo.', 'error');
+      console.error('Error detallado reservando cita:', err);
+      addNotification('Error de conexión. Verifica que el servidor esté activo.', 'error');
     }    // Reset and close the modal
     setIsLoading(false);
     onClose();
@@ -262,8 +273,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, selectedSe
 
   const availableSlots = getAvailableTimeSlots(booking.date || '');
   
-  const selectedServiceInfo = services.find(s => s.id === booking.serviceId)
-  const selectedVehicleInfo = vehicles.find(v => v.id === booking.vehicleId)
+  const selectedServiceInfo = services.find(s => s.id === booking.serviceId);
+  const selectedVehicleInfo = vehicles.find(v => v.id === booking.vehicleId);
 
 
   if (!isOpen) return null;

@@ -35,11 +35,10 @@ const ManageMechanics: React.FC = () => {
   const [mechanicAppointments, setMechanicAppointments] = useState<any[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const { addNotification } = useNotification();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchMechanics = async () => {
-      setLoading(true);
       const token = localStorage.getItem("token");
       if (!token) {
         setMechanics([]);
@@ -63,15 +62,17 @@ const ManageMechanics: React.FC = () => {
       } catch {
         setMechanics([]);
       }
-      setLoading(false);
+      if (loading) setLoading(false);
     };
+    
+    setLoading(true);
     fetchMechanics();
 
     // Actualizar mecánicos cada 20 segundos
     const interval = setInterval(fetchMechanics, 20000);
     
     return () => clearInterval(interval);
-  }, [backendUrl]);
+  }, []);
 
   const handleCreateMechanic = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -16,7 +16,13 @@ const app = express();
 
 // Configuración de CORS (Debe ir ANTES de cualquier otra configuración)
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -146,10 +152,12 @@ app.get("/api/services", async (req, res) => {
   let client;
   try {
     console.log("🔍 Solicitando lista de servicios...");
-    let client = await pool.connect();
-    client = await pool.connect();
-    const result = await client.query('SELECT * FROM services ORDER BY name');
-    client.release();
+    client = await pool.connect(); // solo una vez
+
+    const result = await client.query(
+      "SELECT * FROM services ORDER BY name"
+    );
+
     console.log(`✅ Servicios encontrados: ${result.rows.length}`);
     res.json(result.rows);
   } catch (err) {
@@ -159,6 +167,8 @@ app.get("/api/services", async (req, res) => {
     if (client) client.release();
   }
 });
+
+
 
 app.post("/api/services", authMiddleware(["admin"]), async (req, res) => {
   try {
@@ -243,24 +253,25 @@ app.get("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res) 
   }
 });
 
+
+//post client
 app.post("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   let client;
   try {
     const { name, phone, email } = req.body;
     const clientId = uuidv4();
-    const client = await pool.connect();
-    client = await pool.connect();
-    
+
+    client = await pool.connect(); // solo una vez
+
     const result = await client.query(
-      'INSERT INTO clients (id, name, phone, email) VALUES ($1, $2, $3, $4) RETURNING *',
+      "INSERT INTO clients (id, name, phone, email) VALUES ($1, $2, $3, $4) RETURNING *",
       [clientId, name, phone, email]
     );
-    
-    client.release();
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Error creando cliente:", err);
-    if (err.code === '23505') { // Unique violation
+    if (err.code === "23505") {
       res.status(400).json({ message: "Email already exists" });
     } else {
       res.status(500).json({ message: "Internal server error" });
@@ -269,6 +280,7 @@ app.post("/api/clients", authMiddleware(["admin", "mechanic"]), async (req, res)
     if (client) client.release();
   }
 });
+
 
 // Update client
 app.put("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
@@ -325,15 +337,15 @@ app.delete("/api/clients/:id", authMiddleware(["admin", "mechanic"]), async (req
 app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   let client;
   try {
-    let client = await pool.connect();
-    client = await pool.connect();
+    client = await pool.connect(); // solo una vez
+
     const result = await client.query(`
-      SELECT v.*, c.name as client_name, c.email as client_email 
-      FROM vehicles v 
-      LEFT JOIN clients c ON v.client_id = c.id 
+      SELECT v.*, c.name AS client_name, c.email AS client_email
+      FROM vehicles v
+      LEFT JOIN clients c ON v.client_id = c.id
       ORDER BY v.make, v.model
     `);
-    client.release();
+
     res.json(result.rows);
   } catch (err) {
     console.error("Error obteniendo vehículos:", err);
@@ -342,6 +354,7 @@ app.get("/api/vehicles", authMiddleware(["admin", "mechanic"]), async (req, res)
     if (client) client.release();
   }
 });
+
 
 // Get vehicles for authenticated client
 app.get("/api/vehicles/client/:clientId", authMiddleware(), async (req, res) => {
@@ -384,10 +397,14 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
     
     // If client doesn't exist, create one
     if (clientCheck.rows.length === 0) {
-      await dbClient.query(
-        'INSERT INTO clients (id, name, email, phone) VALUES ($1, $2, $3, $4)',
-        [finalClientId, req.user.name || 'User', req.user.email || '', '']
-      );
+     await dbClient.query(
+  `INSERT INTO clients (id, name, email, phone) 
+   VALUES ($1, $2, $3, $4)
+   ON CONFLICT (id) DO UPDATE 
+   SET name = $2, email = $3, phone = $4`,
+  [client_id, finalName, finalEmail, finalPhone]
+);
+
     }
     
     // Now insert the vehicle
@@ -464,89 +481,158 @@ app.delete("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (re
 // Allow public access for bookings (anonymous clients)
 app.post("/api/bookings", async (req, res) => {
   try {
-    const { client_id, vehicle_id, service_id, date, time, notes, client_name, client_email, client_phone, service_provider_id } = req.body;
+    const {
+      client_id,
+      vehicle_id,
+      service_id,
+      date,
+      time,
+      notes,
+      client_name,
+      client_email,
+      client_phone,
+      service_provider_id
+    } = req.body;
+
     const appointmentId = uuidv4();
-    
+
     // Validate required fields
-    if (!client_id || !vehicle_id || !service_id || !date || !time) {
+    if (!vehicle_id || !service_id || !date || !time) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-    
-    const dbClient = await pool.connect();
-    
-    try {
-      // Ensure client exists in clients table
-      const clientCheck = await dbClient.query(
-        'SELECT id FROM clients WHERE id = $1',
-        [client_id]
-      );
-      
-      // If client doesn't exist, create one with provided data or from token
-      if (clientCheck.rows.length === 0) {
-        // Try to get user info from token if available (optional auth)
-        let userFromToken = null;
-        const authHeader = req.headers.authorization;
-        if (authHeader) {
-          try {
-            const token = authHeader.replace("Bearer ", "");
-            if (token && token !== 'null') {
-              userFromToken = jwt.verify(token, config.server.jwtSecret);
-            }
-          } catch (e) {
-            // Ignore invalid token for public endpoint
-          }
-        }
 
-        const finalName = client_name || (userFromToken && userFromToken.name) || 'Cliente';
-        const finalEmail = client_email || (userFromToken && userFromToken.email) || '';
-        const finalPhone = client_phone || (userFromToken && userFromToken.phone) || '';
-        
+    const dbClient = await pool.connect();
+
+    try {
+      // =========================================
+      // 1) OBTENER DATOS FINALES DEL CLIENTE
+      // =========================================
+      let userFromToken = null;
+      const authHeader = req.headers.authorization;
+
+      if (authHeader) {
+        try {
+          const token = authHeader.replace("Bearer ", "");
+          if (token && token !== "null") {
+            userFromToken = jwt.verify(token, config.server.jwtSecret);
+          }
+        } catch (e) {
+          // Ignorar token inválido (endpoint público)
+        }
+      }
+
+      const finalName =
+        client_name ||
+        (userFromToken && userFromToken.name) ||
+        "Cliente";
+
+      const finalEmail =
+        client_email ||
+        (userFromToken && userFromToken.email) ||
+        "";
+
+      const finalPhone =
+        client_phone ||
+        (userFromToken && userFromToken.phone) ||
+        "";
+
+      if (!finalEmail) {
+        dbClient.release();
+        return res.status(400).json({ message: "Client email is required" });
+      }
+
+      // =========================================
+      // 2) BUSCAR/CREAR CLIENTE POR EMAIL (UNIQUE)
+      // =========================================
+      // Buscar cliente por email (porque email es UNIQUE)
+      const existingClient = await dbClient.query(
+        "SELECT id FROM clients WHERE email = $1",
+        [finalEmail]
+      );
+
+      let effectiveClientId = client_id || uuidv4();
+
+      if (existingClient.rows.length === 0) {
+        // No existe → crear cliente nuevo
         await dbClient.query(
-          'INSERT INTO clients (id, name, email, phone) VALUES ($1, $2, $3, $4)',
-          [client_id, finalName, finalEmail, finalPhone]
+          "INSERT INTO clients (id, name, email, phone) VALUES ($1, $2, $3, $4)",
+          [effectiveClientId, finalName, finalEmail, finalPhone]
+        );
+      } else {
+        // Ya existe → reutilizar su id
+        effectiveClientId = existingClient.rows[0].id;
+
+        // Opcional: actualizar nombre/teléfono
+        await dbClient.query(
+          "UPDATE clients SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3",
+          [finalName, finalPhone, effectiveClientId]
         );
       }
-      
-      // Si se proporciona service_provider_id, validar que el mecánico existe
+
+      // =========================================
+      // 3) VALIDAR MECÁNICO (SI VIENE)
+      // =========================================
       if (service_provider_id) {
         const mechanicCheck = await dbClient.query(
-          'SELECT id FROM users WHERE id = $1 AND role = $2',
-          [service_provider_id, 'mechanic']
+          "SELECT id FROM users WHERE id = $1 AND role = $2",
+          [service_provider_id, "mechanic"]
         );
         if (mechanicCheck.rows.length === 0) {
           dbClient.release();
           return res.status(400).json({ message: "Invalid mechanic ID" });
         }
       }
-      
+
+      // =========================================
+      // 4) CREAR CITA USANDO SIEMPRE effectiveClientId
+      // =========================================
       const result = await dbClient.query(
-        'INSERT INTO appointments (id, client_id, vehicle_id, service_id, date, time, notes, status, service_provider_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-        [appointmentId, client_id, vehicle_id, service_id, date, time, notes || '', 'pending', service_provider_id || null]
+        `INSERT INTO appointments 
+          (id, client_id, vehicle_id, service_id, date, time, notes, status, service_provider_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          appointmentId,
+          effectiveClientId,
+          vehicle_id,
+          service_id,
+          date,
+          time,
+          notes || "",
+          "pending",
+          service_provider_id || null
+        ]
       );
-      
+
       dbClient.release();
       res.status(201).json(result.rows[0]);
     } catch (queryErr) {
       dbClient.release();
-      
-      // Check for foreign key constraint violations
-      if (queryErr.code === '23503') {
+
+      // Foreign key constraint
+      if (queryErr.code === "23503") {
         console.error("Foreign key constraint error:", queryErr.detail);
-        return res.status(400).json({ message: "Invalid client, vehicle, or service ID" });
+        return res
+          .status(400)
+          .json({ message: "Invalid client, vehicle, or service ID" });
       }
-      
-      // Check for unique constraint violations (e.g. client email)
-      if (queryErr.code === '23505') {
+
+      // Unique constraint (email, etc.)
+      if (queryErr.code === "23505") {
         console.error("Unique constraint error:", queryErr.detail);
-        return res.status(400).json({ message: "Client email or data already exists" });
+        return res
+          .status(400)
+          .json({ message: "Client email or data already exists" });
       }
-      
-      // Check for invalid UUID or data types
-      if (queryErr.code === '22P02') {
+
+      // Invalid UUID / data types
+      if (queryErr.code === "22P02") {
         console.error("Invalid data format:", queryErr.message);
-        return res.status(400).json({ message: "Invalid ID or data format" });
+        return res
+          .status(400)
+          .json({ message: "Invalid ID or data format" });
       }
-      
+
       throw queryErr;
     }
   } catch (err) {
@@ -554,6 +640,7 @@ app.post("/api/bookings", async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 app.get("/api/bookings", authMiddleware(["admin", "mechanic"]), async (req, res) => {
   try {

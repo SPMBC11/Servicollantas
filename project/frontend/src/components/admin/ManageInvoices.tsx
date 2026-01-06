@@ -8,14 +8,12 @@ const ManageInvoices: React.FC = () => {
   // Estado de facturas reales
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
 
   useEffect(() => {
     const fetchInvoices = async () => {
-      setLoading(true);
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("No hay token de autenticación. Inicia sesión como admin.");
         setLoading(false);
         return;
       }
@@ -27,24 +25,26 @@ const ManageInvoices: React.FC = () => {
           }
         });
         if (!res.ok) {
-          alert("Error al obtener facturas");
+          console.error("Error al obtener facturas:", res.status);
           setLoading(false);
           return;
         }
         const data = await res.json();
         setInvoices(data);
       } catch {
-        alert("Error de red al obtener facturas");
+        console.error("Error de red al obtener facturas (Backend posiblemente apagado)");
       }
-      setLoading(false);
+      if (loading) setLoading(false);
     };
+    
+    setLoading(true);
     fetchInvoices();
     
     // Actualizar facturas cada 15 segundos
     const interval = setInterval(fetchInvoices, 15000);
     
     return () => clearInterval(interval);
-  }, [backendUrl]);
+  }, []);
 
   // ...existing code...
 
