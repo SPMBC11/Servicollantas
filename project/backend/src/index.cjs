@@ -1,4 +1,5 @@
-console.log("Iniciando Servi-Collantas backend...");
+399
+  console.log("Iniciando Servi-Collantas backend...");
 
 const express = require("express");
 const cors = require("cors");
@@ -395,18 +396,18 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
       [finalClientId]
     );
     
-    // If client doesn't exist, create one
+    // 400
+    
+// If client doesn't exist, create one with minimal data
     if (clientCheck.rows.length === 0) {
-     await dbClient.query(
-  `INSERT INTO clients (id, name, email, phone) 
-   VALUES ($1, $2, $3, $4)
-   ON CONFLICT (id) DO UPDATE 
-   SET name = $2, email = $3, phone = $4`,
-  [client_id, finalName, finalEmail, finalPhone]
-);
-
+      await dbClient.query(
+        `INSERT INTO clients (id, name, email, phone) 
+         VALUES ($1, $2, $3, $4)`,
+        [finalClientId, "Cliente", "", ""]
+      );
     }
     
+    }    
     // Now insert the vehicle
     const result = await dbClient.query(
       'INSERT INTO vehicles (id, make, model, year, license_plate, client_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
