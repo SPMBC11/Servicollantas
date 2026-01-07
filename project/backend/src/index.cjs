@@ -22,8 +22,8 @@ const corsOptions = {
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
-    process.env.FRONTEND_URL
-        'https://servicollantas.vercel.app',
+    process.env.FRONTEND_URL,
+    'https://servicollantas.vercel.app',
   ].filter(Boolean),
   credentials: true,
   optionsSuccessStatus: 200,
@@ -31,6 +31,7 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Content-Type', 'Authorization']
 };
+
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Habilitar pre-flight para todas las rutas
 
