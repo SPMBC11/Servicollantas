@@ -4,7 +4,8 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-    "destination": "https://servicollantas.onrender.com/$1",    },
+      "destination": "https://servicollantas.onrender.com/$1"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
