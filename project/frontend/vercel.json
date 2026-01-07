@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://serviciollantas.onrender.com/api/$1"
+      "destination": ""https://servicollantas.onrender.com/$1"
     },
     {
       "source": "/(.*)",
@@ -12,6 +12,6 @@
     }
   ],
   "env": {
-    "VITE_API_BASE_URL": "https://serviciollantas.onrender.com/api"
+    "VITE_API_BASE_URL": "https://servicollantas.onrender.com"
   }
 }
