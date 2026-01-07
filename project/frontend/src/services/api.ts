@@ -1,5 +1,5 @@
 // Servicio de API para conectar con el backend
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://servicollantas.onrender.com'';
 
 // Función helper para hacer requests
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
