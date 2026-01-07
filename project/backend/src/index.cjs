@@ -397,6 +397,7 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
       'SELECT id FROM clients WHERE id = $1',
       [finalClientId]
     );
+}
      catch (err) {}
 
     
