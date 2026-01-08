@@ -3,7 +3,6 @@
 
 const express = require("express");
 const cors = require("cors");
-const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -398,7 +397,21 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
       [finalClientId]
     );
 }
-     catch (err) {}
+    } catch (err) {
+    dbClient.release();
+    console.error("Error creando vehículo:", err);
+    
+    if (err.code === '23505') {
+      // Unique constraint violation (placa duplicada)
+      return res.status(400).json({ message: "La placa de licencia ya existe" });
+    } else if (err.code === '23503') {
+      // Foreign key violation
+      return res.status(400).json({ message: "Cliente o datos inválidos" });
+    } else {
+      return res.status(500).json({ message: "Error interno del servidor" });
+    }
+  }
+});
 
     
     // 400
