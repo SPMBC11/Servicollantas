@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Wrench, Star, CheckCircle, Clock, AlertCircle, Plus, X, Copy, Check, Edit2, Mail, Trash2, Calendar, Eye } from "lucide-react";
 import Card from "../ui/Card";
 import { useNotification } from "../../context/NotificationContext";
+import { API_BASE_URL } from "../../services/api";
 
 interface Mechanic {
   id: string;
@@ -35,8 +36,7 @@ const ManageMechanics: React.FC = () => {
   const [mechanicAppointments, setMechanicAppointments] = useState<any[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const { addNotification } = useNotification();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:4000";
-
+  const backendUrl = API_BASE_URL;
   useEffect(() => {
     const fetchMechanics = async () => {
       const token = localStorage.getItem("token");
