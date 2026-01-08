@@ -268,3 +268,6 @@ export const healthService = {
     return apiRequest('/api/health');
   },
 };
+
+// Exportar URL base para uso en componentes
+export { API_BASE_URL };
