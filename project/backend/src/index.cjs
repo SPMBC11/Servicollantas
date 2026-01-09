@@ -1,4 +1,3 @@
-399
   console.log("Iniciando Servi-Collantas backend...");
 
 const express = require("express");
@@ -9,9 +8,14 @@ const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
-const { pool, testConnection, initializeTables, seedInitialData } = require("./database");
-const config = require("./config");
 
+const config = require("./config");
+const {
+  pool,
+  testConnection,
+  initializeTables,
+  seedInitialData,
+} = require("./database.js");  // o "./database" pero asegurando que el archivo se llame database.js
 const app = express();
 
 // Configuración de CORS (Debe ir ANTES de cualquier otra configuración)
