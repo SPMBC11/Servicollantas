@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
+const helmet = require("helmet");
 const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
 const { v4: uuidv4 } = require("uuid");
