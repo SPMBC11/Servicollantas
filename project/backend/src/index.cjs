@@ -375,37 +375,67 @@ app.get("/api/vehicles/client/:clientId", authMiddleware(), async (req, res) => 
   }
 });
 
+// Crear vehículo
 app.post("/api/vehicles", authMiddleware(), async (req, res) => {
   const dbClient = await pool.connect();
+
   try {
     const { make, model, year, license_plate, client_id } = req.body;
+
+    if (!make || !model || !year || !license_plate) {
+      dbClient.release();
+      return res.status(400).json({
+        message: "Campos requeridos: make, model, year, license_plate",
+      });
+    }
+
     const vehicleId = uuidv4();
-    
-    // For clients, always use their own ID. For admin/mechanic, use provided client_id or user ID
+
+    // Para clientes, usar su propio ID. Para admin/mecánico, usar el proporcionado o su ID
     let finalClientId = client_id;
-    
+
     if (req.user.role === "client") {
       finalClientId = req.user.id;
     } else if (!finalClientId) {
       finalClientId = req.user.id;
     }
-    
-    // Ensure the client exists in the clients table
-    // Check if client exists
-    let clientCheck = await dbClient.query(
-      'SELECT id FROM clients WHERE id = $1',
+
+    // Verificar que el cliente existe
+    const clientCheck = await dbClient.query(
+      "SELECT id FROM clients WHERE id = $1",
       [finalClientId]
     );
-}
-    } catch (err) {
+
+    // Si el cliente no existe, crearlo con datos mínimos
+    if (clientCheck.rows.length === 0) {
+      await dbClient.query(
+        `INSERT INTO clients (id, name, email, phone)
+         VALUES ($1, $2, $3, $4)`,
+        [finalClientId, "Cliente", "", ""]
+      );
+    }
+
+    // Ahora insertar el vehículo
+    const result = await dbClient.query(
+      `INSERT INTO vehicles (id, make, model, year, license_plate, client_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [vehicleId, make, model, year, license_plate, finalClientId]
+    );
+
     dbClient.release();
+    return res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (dbClient) dbClient.release();
     console.error("Error creando vehículo:", err);
-    
-    if (err.code === '23505') {
-      // Unique constraint violation (placa duplicada)
-      return res.status(400).json({ message: "La placa de licencia ya existe" });
-    } else if (err.code === '23503') {
-      // Foreign key violation
+
+    if (err.code === "23505") {
+      // unique_violation, por ejemplo placa duplicada
+      return res
+        .status(400)
+        .json({ message: "La placa de licencia ya existe" });
+    } else if (err.code === "23503") {
+      // foreign_key_violation
       return res.status(400).json({ message: "Cliente o datos inválidos" });
     } else {
       return res.status(500).json({ message: "Error interno del servidor" });
@@ -413,37 +443,11 @@ app.post("/api/vehicles", authMiddleware(), async (req, res) => {
   }
 });
 
+
     
     // 400
     
-// If client doesn't exist, create one with minimal data
-    if (clientCheck.rows.length === 0) {
-      await dbClient.query(
-        `INSERT INTO clients (id, name, email, phone) 
-         VALUES ($1, $2, $3, $4)`,
-        [finalClientId, "Cliente", "", ""]
-      );
-    }
-    
-    }    
-    // Now insert the vehicle
-    const result = await dbClient.query(
-      'INSERT INTO vehicles (id, make, model, year, license_plate, client_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [vehicleId, make, model, year, license_plate, finalClientId]
-    );
-    
-    dbClient.release();
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    dbClient.release();
-    console.error("Error creando vehículo:", err);
-    if (err.code === '23505') { // Unique violation
-      res.status(400).json({ message: "License plate already exists" });
-    } else {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  }
-});
+// If client doesn't exist, create one with minimal dat
 
 // Update vehicle
 app.put("/api/vehicles/:id", authMiddleware(["admin", "mechanic"]), async (req, res) => {
