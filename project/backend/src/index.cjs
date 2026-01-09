@@ -950,13 +950,93 @@ app.get("/api/invoices/:id/pdf", authMiddleware(["admin"]), async (req, res) => 
 });
 
 // --- reports endpoint ---
-app.get("/api/reports", authMiddleware(['admin']), async (req, res) => {
+// --- reports endpoint ---
+app.get("/api/reports", authMiddleware(["admin"]), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({ message: "startDate and endDate are required" });
     }
+
+    const client = await pool.connect();
+
+    // Total appointments in range
+    const appointmentsResult = await client.query(
+      `
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+      FROM appointments 
+      WHERE DATE(date) >= $1 AND DATE(date) <= $2
+      `,
+      [startDate, endDate]
+    );
+
+    const stats = appointmentsResult.rows[0];
+
+    // Service breakdown
+    const servicesResult = await client.query(
+      `
+      SELECT 
+        s.name as service_name,
+        COUNT(a.id) as count,
+        COALESCE(SUM(s.price), 0) as revenue
+      FROM appointments a
+      JOIN services s ON a.service_id = s.id
+      WHERE DATE(a.date) >= $1 AND DATE(a.date) <= $2 AND a.status = 'completed'
+      GROUP BY s.id, s.name
+      ORDER BY count DESC
+      `,
+      [startDate, endDate]
+    );
+
+    // Appointments by day
+    const appointmentsByDayResult = await client.query(
+      `
+      SELECT 
+        DATE(date) as date,
+        COUNT(*) as count
+      FROM appointments
+      WHERE DATE(date) >= $1 AND DATE(date) <= $2
+      GROUP BY DATE(date)
+      ORDER BY DATE(date)
+      `,
+      [startDate, endDate]
+    );
+
+    // Total revenue
+    const revenueResult = await client.query(
+      `
+      SELECT COALESCE(SUM(s.price), 0) as total_revenue
+      FROM appointments a
+      JOIN services s ON a.service_id = s.id
+      WHERE DATE(a.date) >= $1 AND DATE(a.date) <= $2 AND a.status = 'completed'
+      `,
+      [startDate, endDate]
+    );
+
+    client.release();
+
+    const reportData = {
+      totalAppointments: parseInt(stats.total) || 0,
+      completedAppointments: parseInt(stats.completed) || 0,
+      pendingAppointments: parseInt(stats.pending) || 0,
+      cancelledAppointments: parseInt(stats.cancelled) || 0,
+      services: servicesResult.rows,
+      appointmentsByDay: appointmentsByDayResult.rows,
+      totalRevenue: parseFloat(revenueResult.rows[0].total_revenue) || 0,
+    };
+
+    return res.json(reportData);
+  } catch (err) {
+    console.error("Error obteniendo reporte:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
     
     const client = await pool.connect();
     
